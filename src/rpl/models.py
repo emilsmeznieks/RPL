@@ -57,6 +57,8 @@ class Digest:
     limitations: list[SourcedStatement]
     takeaways: list[SourcedStatement]
     extraction_method: str = "deterministic-extractive-v1"
+    paper_type: str = "unknown"
+    paper_type_confidence: str = "low"
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

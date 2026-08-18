@@ -122,8 +122,10 @@ Example:
 
 ```json
 {
-  "schema_version": "0.4",
+  "schema_version": "0.5",
   "digest": {
+    "paper_type": "empirical",
+    "paper_type_confidence": "high",
     "problem": {
       "text": "A statement selected from the paper...",
       "section": "Abstract",
@@ -177,6 +179,7 @@ RPL 0.7 supports:
 - Paper-defined terminology
 - Direct links to matching arXiv paragraphs or sections
 - One selected statement per exact source paragraph in each output section
+- Paper-type-aware result extraction for empirical and theoretical papers
 - Cleaner reader text without citation-number clutter
 
 Not yet included:

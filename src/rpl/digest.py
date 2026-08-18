@@ -81,6 +81,49 @@ LOW_INFORMATION_SIGNALS = (
     "is organised as follows",
     "is organized as follows",
 )
+EMPIRICAL_PAPER_SIGNALS = (
+    "ablation",
+    "accuracy",
+    "benchmark",
+    "dataset",
+    "empirical",
+    "evaluation",
+    "experiment",
+    "performance",
+    "result",
+    "simulation",
+)
+THEORETICAL_PAPER_SIGNALS = (
+    "analytical",
+    "corollary",
+    "correspondence",
+    "derivation",
+    "formalism",
+    "invariant",
+    "lemma",
+    "proof",
+    "proposition",
+    "spectrum",
+    "theorem",
+)
+THEORETICAL_STRONG_RESULT_SIGNALS = (
+    "correspondence between",
+    "is equivalent to",
+    "we demonstrate",
+    "we derive",
+    "we establish",
+    "we explicitly give",
+    "we have derived",
+    "we have established",
+    "we have shown",
+    "we prove",
+    "we show",
+)
+THEORETICAL_WEAK_RESULT_SIGNALS = (
+    "we construct",
+    "we find",
+    "we obtain",
+)
 
 
 def sentences(text: str) -> list[str]:
@@ -111,12 +154,20 @@ def _first_matching(
     return None
 
 
-def _unique(items: Iterable[SourcedStatement], limit: int) -> list[SourcedStatement]:
+def _text_key(text: str) -> str:
+    return re.sub(r"\W+", " ", text.lower()).strip()
+
+
+def _unique(
+    items: Iterable[SourcedStatement],
+    limit: int,
+    excluded: Iterable[SourcedStatement | None] = (),
+) -> list[SourcedStatement]:
     result: list[SourcedStatement] = []
-    seen_text: set[str] = set()
+    seen_text = {_text_key(item.text) for item in excluded if item is not None}
     seen_paragraphs: set[tuple[str, str]] = set()
     for item in items:
-        text_key = re.sub(r"\W+", " ", item.text.lower()).strip()
+        text_key = _text_key(item.text)
         paragraph_key = None
         if item.source_anchor and item.source_anchor != item.section_anchor:
             paragraph_key = (item.section, item.source_anchor)
@@ -134,10 +185,36 @@ def _unique(items: Iterable[SourcedStatement], limit: int) -> list[SourcedStatem
 
 
 def _ranked_unique(
-    items: Iterable[tuple[int, int, SourcedStatement]], limit: int
+    items: Iterable[tuple[int, int, SourcedStatement]],
+    limit: int,
+    excluded: Iterable[SourcedStatement | None] = (),
 ) -> list[SourcedStatement]:
     ranked = sorted(items, key=lambda item: (-item[0], item[1]))
-    return _unique((item[2] for item in ranked), limit)
+    return _unique((item[2] for item in ranked), limit, excluded)
+
+
+def classify_paper(paper: Paper) -> tuple[str, str]:
+    """Classify broad paper type from explicit structural and language signals."""
+
+    profile_text = " ".join(
+        [paper.abstract, *(section.title for section in paper.sections)]
+    ).lower()
+    empirical_score = sum(signal in profile_text for signal in EMPIRICAL_PAPER_SIGNALS)
+    theoretical_score = sum(
+        signal in profile_text for signal in THEORETICAL_PAPER_SIGNALS
+    )
+
+    paragraph_count = sum(len(section.paragraphs) for section in paper.sections)
+    equation_count = sum(len(section.equations) for section in paper.sections)
+    if paragraph_count and equation_count >= paragraph_count * 2:
+        theoretical_score += 2
+
+    difference = empirical_score - theoretical_score
+    if empirical_score >= 2 and difference >= 2:
+        return "empirical", "high" if difference >= 4 else "moderate"
+    if theoretical_score >= 2 and difference <= -2:
+        return "theoretical", "high" if difference <= -4 else "moderate"
+    return "unknown", "low"
 
 
 def build_digest(paper: Paper) -> Digest:
@@ -159,12 +236,23 @@ def build_digest(paper: Paper) -> Digest:
                 for text in sentences(paragraph)
             )
 
-    problem = _first_matching(abstract_sentences, PROBLEM_SIGNALS)
-    if problem is None and abstract_sentences:
+    paper_type, paper_type_confidence = classify_paper(paper)
+    introduction_sentences = [
+        item
+        for item in all_section_sentences
+        if "introduction" in item[1].lower()
+    ]
+
+    problem = _first_matching(
+        abstract_sentences + introduction_sentences, PROBLEM_SIGNALS
+    )
+    if problem is None and abstract_sentences and paper_type != "theoretical":
         problem = _statement(*abstract_sentences[0])
 
     core_idea = _first_matching(abstract_sentences, IDEA_SIGNALS)
-    if core_idea is None and len(abstract_sentences) > 1:
+    if core_idea is None and paper_type == "theoretical" and abstract_sentences:
+        core_idea = _statement(*abstract_sentences[0])
+    elif core_idea is None and len(abstract_sentences) > 1:
         core_idea = _statement(*abstract_sentences[1])
 
     evidence_candidates: list[tuple[int, int, SourcedStatement]] = []
@@ -177,7 +265,58 @@ def build_digest(paper: Paper) -> Digest:
         outcome = any(token in lowered for token in EVIDENCE_OUTCOME_SIGNALS)
         general_signal = any(token in lowered for token in EVIDENCE_SIGNALS)
         has_number = bool(NUMBER_SIGNAL.search(text))
-        if has_number and (result_section or outcome):
+        theoretical_strong_count = sum(
+            signal in lowered for signal in THEORETICAL_STRONG_RESULT_SIGNALS
+        )
+        theoretical_weak_count = sum(
+            signal in lowered for signal in THEORETICAL_WEAK_RESULT_SIGNALS
+        )
+        theoretical_section = any(
+            token in section_lower
+            for token in (
+                "analysis",
+                "conclusion",
+                "correspondence",
+                "derivation",
+                "proof",
+                "result",
+                "spectrum",
+                "theorem",
+            )
+        )
+        strong_theoretical_section = any(
+            token in section_lower
+            for token in ("conclusion", "proof", "result", "theorem")
+        )
+        if (
+            paper_type == "theoretical"
+            and "?" not in text
+            and (section == "Abstract" or theoretical_section)
+            and (
+                theoretical_strong_count
+                or (strong_theoretical_section and theoretical_weak_count)
+            )
+        ):
+            score = (
+                (8 if "conclusion" in section_lower else 0)
+                + (6 if section == "Abstract" else 0)
+                + (5 if strong_theoretical_section else 0)
+                + (2 if theoretical_section else 0)
+                + (4 * theoretical_strong_count)
+                + theoretical_weak_count
+            )
+            evidence_candidates.append(
+                (
+                    score,
+                    order,
+                    _statement(text, section, section_anchor, source_anchor),
+                )
+            )
+        elif (
+            paper_type != "theoretical"
+            and has_number
+            and (result_section or outcome)
+        ):
             score = (
                 (5 if result_section else 0)
                 + (4 if outcome else 0)
@@ -237,10 +376,18 @@ def build_digest(paper: Paper) -> Digest:
                 _statement(text, section, section_anchor, source_anchor)
             )
 
+    evidence = _ranked_unique(
+        evidence_candidates, 5, excluded=(problem, core_idea)
+    )
+    takeaway_candidates = discussion_candidates
+    if paper_type != "theoretical":
+        takeaway_candidates = conclusion_candidates + discussion_candidates
     return Digest(
         problem=problem,
         core_idea=core_idea,
-        evidence=_ranked_unique(evidence_candidates, 5),
+        evidence=evidence,
         limitations=_ranked_unique(limitation_candidates, 5),
-        takeaways=_unique(conclusion_candidates + discussion_candidates, 3),
+        takeaways=_unique(takeaway_candidates, 3, excluded=evidence),
+        paper_type=paper_type,
+        paper_type_confidence=paper_type_confidence,
     )

@@ -129,6 +129,12 @@ def _markdown_glossary(paper: Paper, terms: list[GlossaryTerm]) -> str:
     return "\n".join(lines) + "\n\n"
 
 
+def _results_heading(digest: Digest) -> str:
+    if digest.paper_type == "theoretical":
+        return "Main theoretical results stated in the paper"
+    return "Results reported in the paper"
+
+
 def _node_label(value: str, maximum: int = 42) -> str:
     value = re.sub(r"[^\w\s-]", "", value).strip()
     return value if len(value) <= maximum else value[: maximum - 1].rstrip() + "…"
@@ -167,7 +173,7 @@ def render_markdown(paper: Paper, digest: Digest) -> str:
 
 {_markdown_statement(paper, digest.core_idea)}
 
-## Results reported in the paper
+## {_results_heading(digest)}
 
 {_markdown_list(paper, digest.evidence)}
 
@@ -199,7 +205,7 @@ def knowledge_payload(paper: Paper, digest: Digest) -> dict[str, Any]:
     visual = build_visual_spec(paper)
     glossary = build_glossary(paper)
     return {
-        "schema_version": "0.4",
+        "schema_version": "0.5",
         "paper": paper.to_dict(),
         "digest": digest.to_dict(),
         "visual": visual.to_dict(),
@@ -431,7 +437,7 @@ def render_html(paper: Paper, digest: Digest) -> str:
     <section class="card" aria-labelledby="idea"><h2 id="idea">The core idea</h2>{_html_statement(paper, digest.core_idea)}</section>
     <section class="card wide" aria-labelledby="visual"><h2 id="visual">{escape(visual.title)}</h2>{_html_visual(paper, visual)}</section>
     <section class="card wide" aria-labelledby="map"><h2 id="map">Paper map</h2>{_html_paper_map(paper)}</section>
-    <section class="card" aria-labelledby="evidence"><h2 id="evidence">Results reported in the paper</h2>{_html_list(paper, digest.evidence)}</section>
+    <section class="card" aria-labelledby="evidence"><h2 id="evidence">{escape(_results_heading(digest))}</h2>{_html_list(paper, digest.evidence)}</section>
     <section class="card" aria-labelledby="limits"><h2 id="limits">Limitations</h2>{_html_list(paper, digest.limitations)}</section>
     <section class="card wide" aria-labelledby="remember"><h2 id="remember">Key points from the discussion</h2>{_html_list(paper, digest.takeaways)}</section>
     {_html_glossary(paper, glossary)}

@@ -23,8 +23,10 @@ class DigestTests(unittest.TestCase):
     def test_extracts_problem_and_core_idea(self) -> None:
         self.assertIsNotNone(self.digest.problem)
         self.assertIsNotNone(self.digest.core_idea)
-        self.assertEqual(self.digest.problem.section, "Abstract")
+        self.assertEqual(self.digest.problem.section, "Introduction")
         self.assertIn("role-aligned", self.digest.core_idea.text)
+        self.assertEqual(self.digest.paper_type, "empirical")
+        self.assertEqual(self.digest.paper_type_confidence, "moderate")
 
     def test_keeps_evidence_and_limitations_sourced(self) -> None:
         self.assertGreaterEqual(len(self.digest.evidence), 2)
@@ -99,13 +101,79 @@ class DigestTests(unittest.TestCase):
         self.assertIn("## The core idea", markdown)
         self.assertIn("```mermaid", markdown)
         self.assertFalse(payload["provenance"]["generated_claims"])
-        self.assertEqual(payload["schema_version"], "0.4")
+        self.assertEqual(payload["schema_version"], "0.5")
         self.assertEqual(payload["visual"]["visual_type"], "process")
         self.assertEqual(payload["visual"]["nodes"][0]["label"], "Plan")
         self.assertEqual(payload["visual"]["nodes"][0]["source_anchor"], "S2.p1")
         self.assertIn("Results reported in the paper", markdown)
         self.assertIn("https://arxiv.org/html/2607.17331v1#S3.p1", markdown)
         self.assertEqual(payload["digest"]["evidence"][0]["source_anchor"], "S3.p1")
+
+    def test_extracts_results_from_a_theoretical_paper(self) -> None:
+        paper = Paper(
+            paper_id="hep-th/9901001",
+            title="A theoretical paper",
+            authors=[],
+            published=None,
+            source_url="https://arxiv.org/html/hep-th/9901001",
+            abstract=(
+                "We explicitly give the correspondence between two invariant spectra."
+            ),
+            sections=[
+                Section(
+                    "Spectrum and Correspondence",
+                    2,
+                    paragraphs=[
+                        "Definitions used by the formalism are introduced here.",
+                        "Can we establish a different correspondence from these assumptions?",
+                    ],
+                    equations=["x = y", "y = z", "z = x"],
+                    paragraph_anchors=["S2.p1", "S2.p2"],
+                ),
+                Section(
+                    "Conclusion",
+                    2,
+                    anchor="S4",
+                    paragraphs=[
+                        "We establish the correspondence between the two invariant charge systems."
+                    ],
+                    paragraph_anchors=["S4.p1"],
+                ),
+            ],
+        )
+
+        digest = build_digest(paper)
+        markdown = render_markdown(paper, digest)
+
+        self.assertEqual(digest.paper_type, "theoretical")
+        self.assertEqual(digest.paper_type_confidence, "moderate")
+        self.assertIsNone(digest.problem)
+        self.assertIn("correspondence", digest.core_idea.text.lower())
+        self.assertEqual(digest.evidence[0].source_anchor, "S4.p1")
+        self.assertFalse(any("?" in item.text for item in digest.evidence))
+        self.assertNotIn(digest.core_idea.text, [item.text for item in digest.evidence])
+        self.assertFalse(
+            {item.text for item in digest.evidence}
+            & {item.text for item in digest.takeaways}
+        )
+        self.assertEqual(digest.takeaways, [])
+        self.assertIn("## Main theoretical results stated in the paper", markdown)
+
+    def test_keeps_ambiguous_paper_type_unknown(self) -> None:
+        paper = Paper(
+            paper_id="paper",
+            title="An ambiguous paper",
+            authors=[],
+            published=None,
+            source_url="https://arxiv.org/html/2607.10000v1",
+            abstract="We describe a method for organizing a collection of records.",
+            sections=[Section("Introduction", 2), Section("Method", 2)],
+        )
+
+        digest = build_digest(paper)
+
+        self.assertEqual(digest.paper_type, "unknown")
+        self.assertEqual(digest.paper_type_confidence, "low")
 
     def test_html_is_standalone_and_escapes_paper_content(self) -> None:
         malicious_paper = Paper(
