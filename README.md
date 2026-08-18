@@ -1,74 +1,98 @@
 # RPL — Research Paper Layer
 
-RPL turns research papers into the small set of ideas, evidence, and limitations that humans and AI agents need.
+RPL turns an arXiv paper into a short learning package for people and AI agents.
 
-The current version is a local CLI. Give it an arXiv URL and it creates:
+Give RPL an arXiv URL or ID. It creates:
 
-- `paper.md` — a focused learning card with a visual Mermaid paper map
-- `paper.json` — structured paper content and sourced statements for software or agents
-- `paper.html` — a polished, self-contained learning card with a sourced visual explanation
+- `paper.html` — a readable page with key ideas, evidence, limitations, and a visual explanation
+- `paper.md` — a learning card in Markdown
+- `paper.json` — structured content with source information for AI agents and other tools
 
-RPL is deliberately **extractive** today: it selects statements from the paper instead of asking an LLM to invent a summary. Model-powered explanations and paper comparisons come next; MCP comes after the core is reliable.
+RPL runs locally. It does not require an account, API key, or AI model.
 
 ## Quick start
 
-Requires Python 3.11 or newer.
+You need Python 3.11 or newer.
 
 ```bash
 git clone https://github.com/emilsmeznieks/RPL.git
 cd RPL
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -e .
+python -m pip install .
 ```
 
-Process the first test paper:
+Process a paper:
 
 ```bash
 rpl learn https://arxiv.org/html/2607.17331v1
 ```
 
-RPL writes:
+The files are saved here:
 
 ```text
 rpl-output/2607.17331v1/
+├── paper.html
 ├── paper.md
-├── paper.json
-└── paper.html
+└── paper.json
 ```
 
-Print one format directly in the terminal:
+Open `paper.html` in any browser to read the result.
+
+## Other ways to run RPL
+
+Use an arXiv ID instead of a full URL:
+
+```bash
+rpl learn 2607.17331v1
+```
+
+Choose a different output folder:
+
+```bash
+rpl learn 2607.17331v1 --output ./my-library
+```
+
+Create only one file type:
+
+```bash
+rpl learn 2607.17331v1 --format html
+rpl learn 2607.17331v1 --format markdown
+rpl learn 2607.17331v1 --format json
+```
+
+Print Markdown or JSON in the terminal:
 
 ```bash
 rpl learn 2607.17331v1 --format markdown --stdout
 rpl learn 2607.17331v1 --format json --stdout
-rpl learn 2607.17331v1 --format html --output ./my-library
 ```
 
-Local arXiv HTML files also work:
+Process a saved arXiv HTML file:
 
 ```bash
-rpl learn ./paper.html --output ./my-library
+rpl learn ./paper.html
 ```
 
-## How it works
+## What RPL extracts
 
-```mermaid
-flowchart LR
-  A["arXiv URL"] --> B["Fetch HTML"]
-  B --> C["Parse metadata, sections, equations, figures"]
-  C --> D["Provider-neutral paper model"]
-  D --> E["Extract sourced problem, idea, evidence, limitations"]
-  E --> F["Human Markdown"]
-  E --> G["Agent-ready JSON"]
-  E --> H["Standalone HTML"]
-```
+- The research problem
+- The paper's main idea
+- Evidence worth checking
+- Limitations
+- Key takeaways
+- Paper sections, equations, and figure captions
+- A visual model of an architecture or process when the paper states one clearly
 
-Every selected statement includes its source section. The JSON also records the extraction method and whether generated claims are present.
+Every selected statement includes its source section. Every visual node also keeps the exact text that supports it.
 
-RPL also creates a small `visual` specification containing sourced nodes and directed connections. It can extract architectural layers from figure captions or an explicit process sequence; otherwise it clearly falls back to a low-confidence section outline. Every visual node retains the exact supporting paper text. This stable structure will power animation without coupling the research layer to a particular frontend.
+If RPL cannot identify an architecture or process safely, it shows the paper structure instead and marks the visual as low confidence.
 
-## Example agent payload
+## Using the output with an AI agent
+
+Use `paper.json` as input for a local agent, script, or research library. It contains the paper data, extracted learning card, visual model, and source information.
+
+Example:
 
 ```json
 {
@@ -79,11 +103,7 @@ RPL also creates a small `visual` specification containing sourced nodes and dir
       "section": "Abstract"
     },
     "evidence": [],
-    "limitations": [],
-    "extraction_method": "deterministic-extractive-v1"
-  },
-  "provenance": {
-    "generated_claims": false
+    "limitations": []
   },
   "visual": {
     "schema_version": "0.1",
@@ -91,31 +111,66 @@ RPL also creates a small `visual` specification containing sourced nodes and dir
     "confidence": "medium",
     "nodes": [],
     "edges": []
+  },
+  "provenance": {
+    "generated_claims": false
   }
 }
 ```
 
-## Current scope
+Direct connections for Claude, ChatGPT, Codex, and other agents are planned after the local tool is stable.
 
-- arXiv HTML URLs, arXiv IDs, and local HTML files
-- Metadata, abstract, section, equation, and figure-caption extraction
-- Conservative evidence and limitation selection
-- Markdown, JSON, and standalone HTML output
-- No API key and no required model provider
+## How it works
 
-The deterministic selector is intentionally simple. It can miss important ideas, and its output must not be treated as an expert review.
+```mermaid
+flowchart LR
+  A["arXiv paper"] --> B["Extract paper content"]
+  B --> C["Select key statements with sources"]
+  C --> D["HTML for reading"]
+  C --> E["Markdown for notes"]
+  C --> F["JSON for agents"]
+```
+
+RPL currently copies relevant statements from the paper instead of generating a new summary with an AI model. This reduces invented claims, but it can still miss important information or select an unhelpful sentence.
+
+Always check important claims in the original paper.
+
+## Current status
+
+RPL 0.2 supports:
+
+- arXiv HTML URLs and IDs
+- Saved arXiv HTML files
+- Standalone HTML, Markdown, and JSON output
+- Architecture extraction from figure captions
+- Process extraction from clear step sequences
+- Safe fallback to a paper-section visual
+
+Not yet included:
+
+- AI-written explanations
+- Comparisons with related papers
+- A saved research library
+- Animated visuals
+- Agent connections through Model Context Protocol (MCP)
 
 ## Roadmap
 
-1. Add paper-specific animated visual explanations to the HTML output.
-2. Add grounded model-powered explanations with citations.
-3. Compare related papers and show meaningful differences.
-4. Create reusable local research libraries.
-5. Expose the stable core through MCP for Claude, ChatGPT, Codex, and other agents.
+1. Add motion and controls to visual explanations.
+2. Add cited AI explanations.
+3. Compare related papers.
+4. Build local research libraries.
+5. Add MCP tools for AI agents.
 
 ## Development
 
-Run the test suite:
+Install the project in editable mode:
+
+```bash
+python -m pip install -e .
+```
+
+Run the tests:
 
 ```bash
 python -m unittest discover -s tests -v
@@ -123,7 +178,7 @@ python -m unittest discover -s tests -v
 
 ## Contributing
 
-Issues and pull requests are welcome. Please open an issue before a large change so we can align on the product direction.
+Issues and pull requests are welcome. For a large change, please open an issue first so we can agree on the direction.
 
 ## License
 
