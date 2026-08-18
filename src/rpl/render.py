@@ -359,14 +359,16 @@ def _html_visual(paper: Paper, spec: VisualSpec) -> str:
     )
 
 
-def render_html(paper: Paper, digest: Digest) -> str:
+def render_html(
+    paper: Paper, digest: Digest, comparison: ComparisonSet | None = None
+) -> str:
     """Render a portable, dependency-free learning card safe to open locally."""
 
     authors = ", ".join(paper.authors) or "Unknown authors"
     keywords = ", ".join(paper.keywords) or "Not provided"
     visual = build_visual_spec(paper)
     glossary = build_glossary(paper)
-    agent_json = escape(render_json(paper, digest))
+    agent_json = escape(render_json(paper, digest, comparison))
     script_hash = _interaction_script_hash()
     paper_type = {
         "empirical": "Empirical paper",

@@ -39,6 +39,35 @@ rpl-output/YOUR_ARXIV_ID/
 
 Open `paper.html` in any browser to read the result.
 
+## Use RPL from a local AI client
+
+Install the optional MCP support from the cloned repository:
+
+```bash
+python -m pip install -e ".[mcp]"
+```
+
+Add RPL as a local MCP server in your AI client's configuration. This macOS and Linux example uses the virtual environment created in the quick start:
+
+```json
+{
+  "mcpServers": {
+    "rpl": {
+      "command": "/ABSOLUTE/PATH/TO/RPL/.venv/bin/rpl",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+Replace the command with the real path to `rpl` inside your virtual environment. Restart the AI client, then ask:
+
+```text
+Use RPL to analyze this arXiv paper: YOUR_ARXIV_URL
+```
+
+The AI client calls `analyze_arxiv_paper`. RPL runs on your computer and saves `paper.html`, `paper.md`, and `paper.json` under `~/RPL/` by default. The MCP tool accepts arXiv URLs and IDs; it cannot read arbitrary local files.
+
 ## Other ways to run RPL
 
 Use the paper's arXiv ID instead of a full URL:
@@ -202,6 +231,8 @@ RPL 0.7 supports:
 - One selected statement per exact source paragraph in each output section
 - Paper-type-aware result extraction for empirical and theoretical papers
 - An evidence-backed JSON model for future related-paper comparisons
+- A local MCP server for compatible AI clients
+- One reusable analysis service shared by the CLI and MCP server
 - Cleaner reader text without citation-number clutter
 
 Not yet included:
@@ -220,10 +251,10 @@ Not yet included:
 
 ## Development
 
-Install the project in editable mode:
+Install the project and local MCP test dependency in editable mode:
 
 ```bash
-python -m pip install -e .
+python -m pip install -e ".[mcp]"
 ```
 
 Run the tests:

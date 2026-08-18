@@ -20,6 +20,9 @@ classifiers = [
   "Programming Language :: Python :: 3.13",
 ]
 
+[project.optional-dependencies]
+mcp = ["mcp>=1.27,<2"]
+
 [project.scripts]
 rpl = "rpl.cli:main"
 

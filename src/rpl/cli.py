@@ -2,20 +2,13 @@ from __future__ import annotations
 
 import argparse
 import math
-import re
 import sys
 from pathlib import Path
 
 from . import __version__
-from .digest import build_digest
-from .parser import PaperParseError, parse_arxiv_html
-from .render import render_html, render_json, render_markdown
-from .source import SourceError, read_source
-
-
-def safe_name(value: str) -> str:
-    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "-", value).strip("-.")
-    return cleaned or "paper"
+from .parser import PaperParseError
+from .service import analyze_source, write_analysis
+from .source import SourceError
 
 
 def positive_float(value: str) -> float:
@@ -50,60 +43,66 @@ def build_parser() -> argparse.ArgumentParser:
         default="all",
         help="output format (default: all)",
     )
-    learn.add_argument("--stdout", action="store_true", help="print the selected output instead of writing files")
-    learn.add_argument("--timeout", type=positive_float, default=30.0, help="download timeout in seconds")
+    learn.add_argument(
+        "--stdout",
+        action="store_true",
+        help="print the selected output instead of writing files",
+    )
+    learn.add_argument(
+        "--timeout",
+        type=positive_float,
+        default=30.0,
+        help="download timeout in seconds",
+    )
+
+    mcp = commands.add_parser("mcp", help="run RPL as a local MCP server")
+    mcp.add_argument(
+        "-o",
+        "--output",
+        default=str(Path.home() / "RPL"),
+        help="artifact directory (default: ~/RPL)",
+    )
+    mcp.add_argument(
+        "--timeout",
+        type=positive_float,
+        default=30.0,
+        help="paper download timeout in seconds",
+    )
     return parser
 
 
 def learn(args: argparse.Namespace) -> int:
     try:
-        html, source_url = read_source(args.source, timeout=args.timeout)
-        paper = parse_arxiv_html(html, source_url)
+        analysis = analyze_source(args.source, timeout=args.timeout)
     except (PaperParseError, SourceError, OSError, UnicodeError) as exc:
         print(f"rpl: {exc}", file=sys.stderr)
         return 1
 
-    digest = build_digest(paper)
-    markdown = render_markdown(paper, digest)
-    json_output = render_json(paper, digest)
-    html_output = render_html(paper, digest)
-
     if args.stdout:
         if args.format == "json":
-            print(json_output, end="")
+            print(analysis.json, end="")
         elif args.format == "html":
-            print(html_output, end="")
+            print(analysis.html, end="")
         elif args.format == "markdown":
-            print(markdown, end="")
+            print(analysis.markdown, end="")
         else:
-            print(markdown, end="")
+            print(analysis.markdown, end="")
             print("\n<!-- RPL JSON -->\n")
-            print(json_output, end="")
+            print(analysis.json, end="")
             print("\n<!-- RPL HTML -->\n")
-            print(html_output, end="")
+            print(analysis.html, end="")
         return 0
 
-    destination = Path(args.output) / safe_name(paper.paper_id)
-    written: list[Path] = []
+    formats = (
+        ("markdown", "json", "html") if args.format == "all" else (args.format,)
+    )
     try:
-        destination.mkdir(parents=True, exist_ok=True)
-        if args.format in ("all", "markdown"):
-            path = destination / "paper.md"
-            path.write_text(markdown, encoding="utf-8")
-            written.append(path)
-        if args.format in ("all", "json"):
-            path = destination / "paper.json"
-            path.write_text(json_output, encoding="utf-8")
-            written.append(path)
-        if args.format in ("all", "html"):
-            path = destination / "paper.html"
-            path.write_text(html_output, encoding="utf-8")
-            written.append(path)
+        written = write_analysis(analysis, args.output, formats)
     except OSError as exc:
         print(f"rpl: Could not write output: {exc}", file=sys.stderr)
         return 1
 
-    print(f"RPL extracted {paper.title}")
+    print(f"RPL extracted {analysis.paper.title}")
     for path in written:
         print(f"  {path}")
     return 0
@@ -114,6 +113,19 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.command == "learn":
         return learn(args)
+    if args.command == "mcp":
+        try:
+            from .mcp_server import run_server
+        except ModuleNotFoundError as exc:
+            if exc.name != "mcp" and not (exc.name or "").startswith("mcp."):
+                raise
+            print(
+                'rpl: MCP support is not installed. Run: pip install "rpl-research[mcp]"',
+                file=sys.stderr,
+            )
+            return 1
+        run_server(args.output, timeout=args.timeout)
+        return 0
     parser.error(f"Unknown command: {args.command}")
     return 2
 
