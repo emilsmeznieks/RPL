@@ -49,6 +49,12 @@ rpl learn YOUR_ARXIV_ID
 
 RPL also accepts arXiv abstract and PDF links. It automatically uses the paper's HTML version for extraction, which must be available on arXiv.
 
+Older arXiv IDs are supported too:
+
+```bash
+rpl learn hep-th/9901001
+```
+
 The Agentic ERP paper is the current development test example:
 
 ```bash
@@ -159,9 +165,9 @@ Always check important claims in the original paper.
 
 ## Current status
 
-RPL 0.6 supports:
+RPL 0.7 supports:
 
-- arXiv HTML URLs and IDs
+- Modern and legacy arXiv URLs and IDs
 - Saved arXiv HTML files
 - Standalone HTML, Markdown, and JSON output
 - Architecture extraction from figure captions
