@@ -6,7 +6,7 @@ The current version is a local CLI. Give it an arXiv URL and it creates:
 
 - `paper.md` — a focused learning card with a visual Mermaid paper map
 - `paper.json` — structured paper content and sourced statements for software or agents
-- `paper.html` — a polished, self-contained learning card that opens in any browser
+- `paper.html` — a polished, self-contained learning card with a sourced visual explanation
 
 RPL is deliberately **extractive** today: it selects statements from the paper instead of asking an LLM to invent a summary. Model-powered explanations and paper comparisons come next; MCP comes after the core is reliable.
 
@@ -66,11 +66,13 @@ flowchart LR
 
 Every selected statement includes its source section. The JSON also records the extraction method and whether generated claims are present.
 
+RPL also creates a small `visual` specification containing sourced nodes and directed connections. It can extract architectural layers from figure captions or an explicit process sequence; otherwise it clearly falls back to a low-confidence section outline. Every visual node retains the exact supporting paper text. This stable structure will power animation without coupling the research layer to a particular frontend.
+
 ## Example agent payload
 
 ```json
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "digest": {
     "problem": {
       "text": "A statement selected from the paper...",
@@ -82,6 +84,13 @@ Every selected statement includes its source section. The JSON also records the 
   },
   "provenance": {
     "generated_claims": false
+  },
+  "visual": {
+    "schema_version": "0.1",
+    "visual_type": "layered-architecture",
+    "confidence": "medium",
+    "nodes": [],
+    "edges": []
   }
 }
 ```

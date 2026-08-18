@@ -1,7 +1,6 @@
 """RPL: focused research knowledge for humans and agents."""
 
-from .models import Digest, Paper, Section
+from .models import Digest, Paper, Section, VisualEdge, VisualNode, VisualSpec
 
-__all__ = ["Digest", "Paper", "Section"]
-__version__ = "0.1.0"
-
+__all__ = ["Digest", "Paper", "Section", "VisualEdge", "VisualNode", "VisualSpec"]
+__version__ = "0.2.0"

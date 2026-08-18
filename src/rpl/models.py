@@ -57,3 +57,39 @@ class Digest:
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
+
+@dataclass(slots=True)
+class VisualNode:
+    """A sourced concept that can be rendered by any visual frontend."""
+
+    id: str
+    label: str
+    kind: str
+    source_section: str
+    source_text: str
+
+
+@dataclass(slots=True)
+class VisualEdge:
+    """A directed relationship between two visual nodes."""
+
+    source: str
+    target: str
+    label: str = "next"
+
+
+@dataclass(slots=True)
+class VisualSpec:
+    """Provider-neutral instructions for a paper-specific visual explanation."""
+
+    schema_version: str
+    visual_type: str
+    title: str
+    description: str
+    confidence: str
+    nodes: list[VisualNode]
+    edges: list[VisualEdge]
+    extraction_method: str = "deterministic-visual-v1"
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)

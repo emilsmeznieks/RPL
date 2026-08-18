@@ -6,7 +6,8 @@ from html import escape
 from typing import Any
 from urllib.parse import urlparse
 
-from .models import Digest, Paper, SourcedStatement
+from .models import Digest, Paper, SourcedStatement, VisualSpec
+from .visual import build_visual_spec
 
 
 def _markdown_statement(item: SourcedStatement | None) -> str:
@@ -87,10 +88,12 @@ This card was produced by `{digest.extraction_method}`. It selects text from the
 
 
 def knowledge_payload(paper: Paper, digest: Digest) -> dict[str, Any]:
+    visual = build_visual_spec(paper)
     return {
-        "schema_version": "0.1",
+        "schema_version": "0.2",
         "paper": paper.to_dict(),
         "digest": digest.to_dict(),
+        "visual": visual.to_dict(),
         "provenance": {
             "source_url": paper.source_url,
             "extraction_method": digest.extraction_method,
@@ -148,11 +151,32 @@ def _html_paper_map(paper: Paper) -> str:
     return f'<ol class="paper-map">{"".join(nodes)}</ol>'
 
 
+def _html_visual(spec: VisualSpec) -> str:
+    nodes = []
+    for index, node in enumerate(spec.nodes, start=1):
+        nodes.append(
+            '<li class="visual-node">'
+            f'<span class="visual-number">{index:02d}</span>'
+            f'<strong>{escape(node.label)}</strong>'
+            f'<span class="visual-source">{escape(node.source_section)}</span>'
+            "</li>"
+        )
+    confidence = f"{spec.confidence.capitalize()} confidence"
+    return (
+        '<div class="visual-heading">'
+        f"<p>{escape(spec.description)}</p>"
+        f'<span class="confidence confidence-{escape(spec.confidence)}">{escape(confidence)}</span>'
+        "</div>"
+        f'<ol class="visual-flow" data-visual-type="{escape(spec.visual_type, quote=True)}">{"".join(nodes)}</ol>'
+    )
+
+
 def render_html(paper: Paper, digest: Digest) -> str:
     """Render a portable, dependency-free learning card safe to open locally."""
 
     authors = ", ".join(paper.authors) or "Unknown authors"
     keywords = ", ".join(paper.keywords) or "Not provided"
+    visual = build_visual_spec(paper)
     agent_json = escape(render_json(paper, digest))
     return f"""<!doctype html>
 <html lang="en">
@@ -187,11 +211,19 @@ def render_html(paper: Paper, digest: Digest) -> str:
     .paper-map {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:12px; margin:0; padding:0; list-style:none; counter-reset:item; }}
     .map-node {{ min-height:118px; display:flex; flex-direction:column; justify-content:space-between; padding:16px; border:1px solid var(--line); border-radius:12px; background:var(--bg); font-weight:700; }}
     .map-number {{ color:var(--accent); font-size:.78rem; letter-spacing:.1em; }}
+    .visual-heading {{ display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:18px; color:var(--muted); }}
+    .visual-heading p {{ margin:0; }}
+    .confidence {{ flex:none; padding:5px 9px; border:1px solid var(--line); border-radius:999px; font-size:.72rem; font-weight:750; letter-spacing:.05em; text-transform:uppercase; }}
+    .visual-flow {{ display:flex; align-items:stretch; gap:28px; margin:0; padding:0; list-style:none; overflow-x:auto; }}
+    .visual-node {{ position:relative; flex:1 0 150px; min-height:150px; display:flex; flex-direction:column; justify-content:space-between; gap:14px; padding:18px; border:1px solid var(--accent); border-radius:14px; background:var(--soft); }}
+    .visual-node:not(:last-child)::after {{ content:"→"; position:absolute; left:calc(100% + 8px); top:50%; width:12px; color:var(--accent); font-weight:800; transform:translateY(-50%); }}
+    .visual-number,.visual-source {{ color:var(--accent); font-size:.72rem; font-weight:750; letter-spacing:.08em; text-transform:uppercase; }}
+    .visual-node strong {{ font:1.25rem/1.15 ui-serif,Georgia,serif; }}
     details {{ border-top:1px solid var(--line); padding-top:16px; }}
     summary {{ cursor:pointer; font-weight:700; }}
     pre {{ max-height:420px; overflow:auto; padding:16px; border-radius:10px; background:#101915; color:#e7f3ec; font:13px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace; white-space:pre-wrap; overflow-wrap:anywhere; }}
     footer {{ padding:12px 0 48px; color:var(--muted); font-size:.9rem; }}
-    @media (max-width:720px) {{ .hero {{ padding-top:46px; }} .grid {{ grid-template-columns:1fr; }} .wide {{ grid-column:auto; }} }}
+    @media (max-width:720px) {{ .hero {{ padding-top:46px; }} .grid {{ grid-template-columns:1fr; }} .wide {{ grid-column:auto; }} .visual-heading {{ align-items:flex-start; flex-direction:column; }} .visual-flow {{ display:grid; overflow:visible; }} .visual-node {{ min-height:112px; }} .visual-node:not(:last-child)::after {{ content:"↓"; left:50%; top:calc(100% + 5px); transform:translateX(-50%); }} }}
     @media (prefers-color-scheme:dark) {{ :root {{ --bg:#111713; --surface:#18201b; --ink:#eef4ef; --muted:#aab6ae; --line:#344038; --accent:#8ed0b0; --soft:#21352b; --warning:#edac8b; }} .card {{ box-shadow:none; }} }}
     @media print {{ :root {{ color-scheme:light; }} body {{ background:white; }} .shell {{ width:100%; }} .hero {{ padding:20px 0; }} .card {{ break-inside:avoid; box-shadow:none; }} details {{ display:none; }} }}
   </style>
@@ -211,6 +243,7 @@ def render_html(paper: Paper, digest: Digest) -> str:
   <main class="shell grid">
     <section class="card" aria-labelledby="problem"><h2 id="problem">The problem</h2>{_html_statement(digest.problem)}</section>
     <section class="card" aria-labelledby="idea"><h2 id="idea">The core idea</h2>{_html_statement(digest.core_idea)}</section>
+    <section class="card wide" aria-labelledby="visual"><h2 id="visual">{escape(visual.title)}</h2>{_html_visual(visual)}</section>
     <section class="card wide" aria-labelledby="map"><h2 id="map">Paper map</h2>{_html_paper_map(paper)}</section>
     <section class="card" aria-labelledby="evidence"><h2 id="evidence">Evidence worth checking</h2>{_html_list(digest.evidence)}</section>
     <section class="card" aria-labelledby="limits"><h2 id="limits">Limitations</h2>{_html_list(digest.limitations)}</section>

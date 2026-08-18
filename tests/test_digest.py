@@ -37,7 +37,9 @@ class DigestTests(unittest.TestCase):
         self.assertIn("## The core idea", markdown)
         self.assertIn("```mermaid", markdown)
         self.assertFalse(payload["provenance"]["generated_claims"])
-        self.assertEqual(payload["schema_version"], "0.1")
+        self.assertEqual(payload["schema_version"], "0.2")
+        self.assertEqual(payload["visual"]["visual_type"], "process")
+        self.assertEqual(payload["visual"]["nodes"][0]["label"], "Plan")
 
     def test_html_is_standalone_and_escapes_paper_content(self) -> None:
         malicious_paper = Paper(
@@ -64,6 +66,7 @@ class DigestTests(unittest.TestCase):
         self.assertNotIn("<script", html.lower())
         self.assertNotIn('href="javascript:', html.lower())
         self.assertIn("&lt;script&gt;", html)
+        self.assertIn("Method &lt;unsafe&gt;", html)
         self.assertIn('href="#"', html)
         self.assertNotIn("https://cdn", html)
 
