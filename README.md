@@ -159,7 +159,7 @@ Always check important claims in the original paper.
 
 ## Current status
 
-RPL 0.5 supports:
+RPL 0.6 supports:
 
 - arXiv HTML URLs and IDs
 - Saved arXiv HTML files
@@ -170,6 +170,7 @@ RPL 0.5 supports:
 - Play, pause, and step controls for visual explanations
 - Paper-defined terminology
 - Direct links to matching arXiv paragraphs or sections
+- One selected statement per exact source paragraph in each output section
 - Cleaner reader text without citation-number clutter
 
 Not yet included:

@@ -32,6 +32,35 @@ class DigestTests(unittest.TestCase):
         self.assertGreaterEqual(len(self.digest.limitations), 2)
         self.assertTrue(any("synthetic" in item.text.lower() for item in self.digest.limitations))
 
+    def test_selects_only_one_claim_from_each_exact_source_paragraph(self) -> None:
+        paper = Paper(
+            paper_id="paper",
+            title="Paragraph deduplication",
+            authors=[],
+            published=None,
+            source_url="https://arxiv.org/html/2607.10000v1",
+            abstract="This paper presents an evaluated method for a difficult problem.",
+            sections=[
+                Section(
+                    "Results",
+                    2,
+                    anchor="S3",
+                    paragraphs=[
+                        "The system achieved 90% accuracy across 100 trials. "
+                        "It also increased completion to 95% over 120 trials.",
+                        "The baseline reached 80% accuracy across 100 trials.",
+                    ],
+                    paragraph_anchors=["S3.p1", "S3.p2"],
+                )
+            ],
+        )
+
+        evidence = build_digest(paper).evidence
+
+        self.assertEqual(
+            [item.source_anchor for item in evidence], ["S3.p1", "S3.p2"]
+        )
+
     def test_takeaways_prefer_substance_over_transition_text(self) -> None:
         paper = Paper(
             paper_id="paper",
@@ -140,14 +169,18 @@ class DigestTests(unittest.TestCase):
                     "Results",
                     2,
                     anchor="S3",
-                    paragraphs=["The method achieved 90% accuracy across 100 trials."],
+                    paragraphs=[
+                        "The method achieved 90% accuracy across 100 trials.",
+                        "The baseline reached 80% accuracy across 100 trials.",
+                    ],
                 )
             ],
         )
 
         evidence = build_digest(paper).evidence
 
-        self.assertEqual(evidence[0].source_anchor, "S3")
+        self.assertEqual(len(evidence), 2)
+        self.assertTrue(all(item.source_anchor == "S3" for item in evidence))
 
     def test_generated_reader_copy_is_neutral(self) -> None:
         html = render_html(self.paper, self.digest).lower()

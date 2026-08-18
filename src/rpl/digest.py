@@ -113,12 +113,20 @@ def _first_matching(
 
 def _unique(items: Iterable[SourcedStatement], limit: int) -> list[SourcedStatement]:
     result: list[SourcedStatement] = []
-    seen: set[str] = set()
+    seen_text: set[str] = set()
+    seen_paragraphs: set[tuple[str, str]] = set()
     for item in items:
-        key = re.sub(r"\W+", " ", item.text.lower()).strip()
-        if key in seen:
+        text_key = re.sub(r"\W+", " ", item.text.lower()).strip()
+        paragraph_key = None
+        if item.source_anchor and item.source_anchor != item.section_anchor:
+            paragraph_key = (item.section, item.source_anchor)
+        if text_key in seen_text or (
+            paragraph_key is not None and paragraph_key in seen_paragraphs
+        ):
             continue
-        seen.add(key)
+        seen_text.add(text_key)
+        if paragraph_key is not None:
+            seen_paragraphs.add(paragraph_key)
         result.append(item)
         if len(result) == limit:
             break
