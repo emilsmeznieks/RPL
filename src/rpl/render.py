@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
 import re
 from html import escape
@@ -8,6 +10,73 @@ from urllib.parse import urlparse
 
 from .models import Digest, Paper, SourcedStatement, VisualSpec
 from .visual import build_visual_spec
+
+
+INTERACTION_SCRIPT = """(() => {
+  const root = document.querySelector("[data-rpl-visual]");
+  if (!root) return;
+  const nodes = [...root.querySelectorAll(".visual-node")];
+  const controls = root.querySelector(".visual-controls");
+  const status = root.querySelector(".visual-status");
+  const previous = root.querySelector('[data-action="previous"]');
+  const play = root.querySelector('[data-action="play"]');
+  const pause = root.querySelector('[data-action="pause"]');
+  const next = root.querySelector('[data-action="next"]');
+  if (!nodes.length || !controls || !status || !previous || !play || !pause || !next) return;
+
+  let index = 0;
+  let timer = null;
+  const interval = 1400;
+
+  function render() {
+    nodes.forEach((node, nodeIndex) => {
+      node.classList.toggle("is-current", nodeIndex === index);
+      node.classList.toggle("is-complete", nodeIndex < index);
+      if (nodeIndex === index) node.setAttribute("aria-current", "step");
+      else node.removeAttribute("aria-current");
+    });
+    status.textContent = `Step ${index + 1} of ${nodes.length}: ${nodes[index].querySelector("strong").textContent}`;
+    previous.disabled = index === 0;
+    next.disabled = index === nodes.length - 1;
+    play.disabled = timer !== null || nodes.length < 2;
+    pause.disabled = timer === null;
+  }
+
+  function stop() {
+    if (timer !== null) window.clearInterval(timer);
+    timer = null;
+    root.classList.remove("is-playing");
+    render();
+  }
+
+  function setStep(nextIndex) {
+    index = Math.max(0, Math.min(nodes.length - 1, nextIndex));
+    render();
+  }
+
+  previous.addEventListener("click", () => { stop(); setStep(index - 1); });
+  next.addEventListener("click", () => { stop(); setStep(index + 1); });
+  pause.addEventListener("click", stop);
+  play.addEventListener("click", () => {
+    if (index === nodes.length - 1) index = 0;
+    root.classList.add("is-playing");
+    timer = window.setInterval(() => {
+      if (index === nodes.length - 1) stop();
+      else setStep(index + 1);
+    }, interval);
+    render();
+  });
+  document.addEventListener("visibilitychange", () => { if (document.hidden) stop(); });
+
+  root.classList.add("is-interactive");
+  controls.hidden = false;
+  render();
+})();"""
+
+
+def _interaction_script_hash() -> str:
+    digest = hashlib.sha256(INTERACTION_SCRIPT.encode("utf-8")).digest()
+    return base64.b64encode(digest).decode("ascii")
 
 
 def _markdown_statement(item: SourcedStatement | None) -> str:
@@ -155,7 +224,7 @@ def _html_visual(spec: VisualSpec) -> str:
     nodes = []
     for index, node in enumerate(spec.nodes, start=1):
         nodes.append(
-            '<li class="visual-node">'
+            f'<li class="visual-node" data-step="{index - 1}">'
             f'<span class="visual-number">{index:02d}</span>'
             f'<strong>{escape(node.label)}</strong>'
             f'<span class="visual-source">{escape(node.source_section)}</span>'
@@ -163,11 +232,22 @@ def _html_visual(spec: VisualSpec) -> str:
         )
     confidence = f"{spec.confidence.capitalize()} confidence"
     return (
+        '<div class="visual-stage" data-rpl-visual>'
         '<div class="visual-heading">'
         f"<p>{escape(spec.description)}</p>"
         f'<span class="confidence confidence-{escape(spec.confidence)}">{escape(confidence)}</span>'
         "</div>"
         f'<ol class="visual-flow" data-visual-type="{escape(spec.visual_type, quote=True)}">{"".join(nodes)}</ol>'
+        '<div class="visual-controls" hidden>'
+        '<div class="visual-buttons" role="group" aria-label="Visual playback controls">'
+        '<button type="button" data-action="previous">← Previous</button>'
+        '<button type="button" data-action="play">Play</button>'
+        '<button type="button" data-action="pause">Pause</button>'
+        '<button type="button" data-action="next">Next →</button>'
+        "</div>"
+        '<p class="visual-status" role="status" aria-live="polite"></p>'
+        "</div>"
+        "</div>"
     )
 
 
@@ -178,12 +258,13 @@ def render_html(paper: Paper, digest: Digest) -> str:
     keywords = ", ".join(paper.keywords) or "Not provided"
     visual = build_visual_spec(paper)
     agent_json = escape(render_json(paper, digest))
+    script_hash = _interaction_script_hash()
     return f"""<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'sha256-{script_hash}'; img-src data:; base-uri 'none'; form-action 'none'">
   <title>{escape(paper.title)} · RPL</title>
   <style>
     :root {{ color-scheme: light dark; --bg:#f4f1e9; --surface:#fffdf7; --ink:#17221d; --muted:#65716a; --line:#d7d6cd; --accent:#245f4b; --soft:#e3eee8; --warning:#8b4a2f; }}
@@ -219,13 +300,27 @@ def render_html(paper: Paper, digest: Digest) -> str:
     .visual-node:not(:last-child)::after {{ content:"→"; position:absolute; left:calc(100% + 8px); top:50%; width:12px; color:var(--accent); font-weight:800; transform:translateY(-50%); }}
     .visual-number,.visual-source {{ color:var(--accent); font-size:.72rem; font-weight:750; letter-spacing:.08em; text-transform:uppercase; }}
     .visual-node strong {{ font:1.25rem/1.15 ui-serif,Georgia,serif; }}
+    .visual-controls {{ display:flex; align-items:center; justify-content:space-between; gap:16px; margin-top:18px; }}
+    .visual-controls[hidden] {{ display:none; }}
+    .visual-buttons {{ display:flex; flex-wrap:wrap; gap:8px; }}
+    .visual-buttons button {{ padding:8px 12px; border:1px solid var(--line); border-radius:9px; background:var(--surface); color:var(--ink); cursor:pointer; font:inherit; font-weight:700; }}
+    .visual-buttons button:hover:not(:disabled) {{ border-color:var(--accent); color:var(--accent); }}
+    .visual-buttons button:focus-visible {{ outline:3px solid var(--accent); outline-offset:2px; }}
+    .visual-buttons button:disabled {{ cursor:not-allowed; opacity:.42; }}
+    .visual-status {{ margin:0; color:var(--muted); font-size:.88rem; font-weight:650; text-align:right; }}
+    .is-interactive .visual-node {{ opacity:.46; filter:saturate(.55); transition:opacity .3s ease,filter .3s ease,transform .3s ease,box-shadow .3s ease; }}
+    .is-interactive .visual-node.is-complete {{ opacity:.76; filter:saturate(.8); }}
+    .is-interactive .visual-node.is-current {{ z-index:1; opacity:1; filter:none; transform:translateY(-5px); box-shadow:0 10px 24px rgb(36 95 75 / .18); }}
+    .is-playing .visual-node.is-current {{ animation:visual-pulse 1.4s ease-in-out infinite; }}
+    @keyframes visual-pulse {{ 50% {{ box-shadow:0 10px 30px rgb(36 95 75 / .32); }} }}
     details {{ border-top:1px solid var(--line); padding-top:16px; }}
     summary {{ cursor:pointer; font-weight:700; }}
     pre {{ max-height:420px; overflow:auto; padding:16px; border-radius:10px; background:#101915; color:#e7f3ec; font:13px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace; white-space:pre-wrap; overflow-wrap:anywhere; }}
     footer {{ padding:12px 0 48px; color:var(--muted); font-size:.9rem; }}
-    @media (max-width:720px) {{ .hero {{ padding-top:46px; }} .grid {{ grid-template-columns:1fr; }} .wide {{ grid-column:auto; }} .visual-heading {{ align-items:flex-start; flex-direction:column; }} .visual-flow {{ display:grid; overflow:visible; }} .visual-node {{ min-height:112px; }} .visual-node:not(:last-child)::after {{ content:"↓"; left:50%; top:calc(100% + 5px); transform:translateX(-50%); }} }}
+    @media (max-width:720px) {{ .hero {{ padding-top:46px; }} .grid {{ grid-template-columns:1fr; }} .wide {{ grid-column:auto; }} .visual-heading,.visual-controls {{ align-items:flex-start; flex-direction:column; }} .visual-flow {{ display:grid; overflow:visible; }} .visual-node {{ min-height:112px; }} .visual-node:not(:last-child)::after {{ content:"↓"; left:50%; top:calc(100% + 5px); transform:translateX(-50%); }} .visual-status {{ text-align:left; }} }}
     @media (prefers-color-scheme:dark) {{ :root {{ --bg:#111713; --surface:#18201b; --ink:#eef4ef; --muted:#aab6ae; --line:#344038; --accent:#8ed0b0; --soft:#21352b; --warning:#edac8b; }} .card {{ box-shadow:none; }} }}
-    @media print {{ :root {{ color-scheme:light; }} body {{ background:white; }} .shell {{ width:100%; }} .hero {{ padding:20px 0; }} .card {{ break-inside:avoid; box-shadow:none; }} details {{ display:none; }} }}
+    @media (prefers-reduced-motion:reduce) {{ html {{ scroll-behavior:auto; }} .is-interactive .visual-node {{ transition:none; }} .is-playing .visual-node.is-current {{ animation:none; }} }}
+    @media print {{ :root {{ color-scheme:light; }} body {{ background:white; }} .shell {{ width:100%; }} .hero {{ padding:20px 0; }} .card {{ break-inside:avoid; box-shadow:none; }} details,.visual-controls {{ display:none; }} .is-interactive .visual-node {{ opacity:1; filter:none; transform:none; box-shadow:none; }} }}
   </style>
 </head>
 <body>
@@ -256,6 +351,7 @@ def render_html(paper: Paper, digest: Digest) -> str:
     </section>
   </main>
   <footer class="shell">Produced by {escape(digest.extraction_method)}. RPL selects text from the paper and does not yet use an LLM. Verify important claims in the original.</footer>
+  <script>{INTERACTION_SCRIPT}</script>
 </body>
 </html>
 """

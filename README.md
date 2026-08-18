@@ -4,7 +4,7 @@ RPL turns an arXiv paper into a short learning package for people and AI agents.
 
 Give RPL an arXiv URL or ID. It creates:
 
-- `paper.html` — a readable page with key ideas, evidence, limitations, and a visual explanation
+- `paper.html` — a readable page with key ideas, evidence, limitations, and an interactive visual explanation
 - `paper.md` — a learning card in Markdown
 - `paper.json` — structured content with source information for AI agents and other tools
 
@@ -88,6 +88,8 @@ Every selected statement includes its source section. Every visual node also kee
 
 If RPL cannot identify an architecture or process safely, it shows the paper structure instead and marks the visual as low confidence.
 
+The HTML visual includes Play, Pause, Previous, and Next controls. Motion starts only when you select Play and is disabled when your device requests reduced motion.
+
 ## Using the output with an AI agent
 
 Use `paper.json` as input for a local agent, script, or research library. It contains the paper data, extracted learning card, visual model, and source information.
@@ -137,7 +139,7 @@ Always check important claims in the original paper.
 
 ## Current status
 
-RPL 0.2 supports:
+RPL 0.3 supports:
 
 - arXiv HTML URLs and IDs
 - Saved arXiv HTML files
@@ -145,22 +147,21 @@ RPL 0.2 supports:
 - Architecture extraction from figure captions
 - Process extraction from clear step sequences
 - Safe fallback to a paper-section visual
+- Play, pause, and step controls for visual explanations
 
 Not yet included:
 
 - AI-written explanations
 - Comparisons with related papers
 - A saved research library
-- Animated visuals
 - Agent connections through Model Context Protocol (MCP)
 
 ## Roadmap
 
-1. Add motion and controls to visual explanations.
-2. Add cited AI explanations.
-3. Compare related papers.
-4. Build local research libraries.
-5. Add MCP tools for AI agents.
+1. Add cited AI explanations.
+2. Compare related papers.
+3. Build local research libraries.
+4. Add MCP tools for AI agents.
 
 ## Development
 

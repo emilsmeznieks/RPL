@@ -3,4 +3,4 @@
 from .models import Digest, Paper, Section, VisualEdge, VisualNode, VisualSpec
 
 __all__ = ["Digest", "Paper", "Section", "VisualEdge", "VisualNode", "VisualSpec"]
-__version__ = "0.2.0"
+__version__ = "0.3.0"

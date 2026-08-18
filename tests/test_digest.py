@@ -1,10 +1,11 @@
 from pathlib import Path
+import re
 import unittest
 
 from rpl.digest import build_digest
 from rpl.parser import parse_arxiv_html
 from rpl.models import Digest, Paper, Section, SourcedStatement
-from rpl.render import knowledge_payload, render_html, render_markdown
+from rpl.render import INTERACTION_SCRIPT, knowledge_payload, render_html, render_markdown
 
 
 FIXTURE = Path(__file__).parent / "fixtures" / "agentic_erp_sample.html"
@@ -63,12 +64,28 @@ class DigestTests(unittest.TestCase):
 
         self.assertTrue(html.startswith("<!doctype html>"))
         self.assertIn("Content-Security-Policy", html)
-        self.assertNotIn("<script", html.lower())
+        self.assertEqual(html.count("<script>"), 1)
+        self.assertIn(f"<script>{INTERACTION_SCRIPT}</script>", html)
+        self.assertNotIn("<script>alert", html.lower())
         self.assertNotIn('href="javascript:', html.lower())
         self.assertIn("&lt;script&gt;", html)
         self.assertIn("Method &lt;unsafe&gt;", html)
         self.assertIn('href="#"', html)
         self.assertNotIn("https://cdn", html)
+
+    def test_html_secures_and_exposes_visual_playback(self) -> None:
+        html = render_html(self.paper, self.digest)
+        policy = re.search(r'Content-Security-Policy" content="([^"]+)', html)
+
+        self.assertIsNotNone(policy)
+        self.assertRegex(policy.group(1), r"script-src 'sha256-[A-Za-z0-9+/]+=*'")
+        self.assertNotIn("script-src 'unsafe-inline'", policy.group(1))
+        self.assertIn('data-action="play"', html)
+        self.assertIn('data-action="pause"', html)
+        self.assertIn('role="group" aria-label="Visual playback controls"', html)
+        self.assertIn('aria-live="polite"', html)
+        self.assertIn(".visual-controls[hidden]", html)
+        self.assertIn("prefers-reduced-motion:reduce", html)
 
 
 if __name__ == "__main__":
