@@ -49,8 +49,10 @@ class ArxivHTMLParser(HTMLParser):
         self._capture_depth: int | None = None
         self._capture_parts: list[str] = []
         self._capture_class = ""
+        self._capture_id = ""
         self._capture_in_abstract = False
         self._capture_kind = ""
+        self._section_anchors: list[tuple[int, str]] = []
 
     @staticmethod
     def _attributes(attrs: list[tuple[str, str | None]]) -> dict[str, str]:
@@ -60,6 +62,9 @@ class ArxivHTMLParser(HTMLParser):
         if tag not in self.void_tags:
             self._depth += 1
         attributes = self._attributes(attrs)
+
+        if tag == "section" and attributes.get("id"):
+            self._section_anchors.append((self._depth, attributes["id"]))
 
         if tag in self.ignored_tags and self._ignored_depth is None:
             self._ignored_depth = self._depth
@@ -97,6 +102,9 @@ class ArxivHTMLParser(HTMLParser):
             self._capture_depth = self._depth
             self._capture_parts = []
             self._capture_class = attributes.get("class", "")
+            self._capture_id = attributes.get("id", "")
+            if not self._capture_id and self._section_anchors:
+                self._capture_id = self._section_anchors[-1][1]
             self._capture_in_abstract = self._abstract_depth is not None
             self._capture_kind = special_kind
 
@@ -124,6 +132,12 @@ class ArxivHTMLParser(HTMLParser):
             self._ignored_depth = None
         if self._math_depth == self._depth and tag == "math":
             self._math_depth = None
+        if (
+            tag == "section"
+            and self._section_anchors
+            and self._section_anchors[-1][0] == self._depth
+        ):
+            self._section_anchors.pop()
         if tag not in self.void_tags:
             self._depth = max(0, self._depth - 1)
 
@@ -131,6 +145,7 @@ class ArxivHTMLParser(HTMLParser):
         tag = self._capture_tag
         text = clean_text(self._capture_parts)
         css_class = self._capture_class
+        element_id = self._capture_id
         in_abstract = self._capture_in_abstract
         capture_kind = self._capture_kind
 
@@ -138,6 +153,7 @@ class ArxivHTMLParser(HTMLParser):
         self._capture_depth = None
         self._capture_parts = []
         self._capture_class = ""
+        self._capture_id = ""
         self._capture_in_abstract = False
         self._capture_kind = ""
 
@@ -160,7 +176,9 @@ class ArxivHTMLParser(HTMLParser):
         if tag in {"h2", "h3", "h4"}:
             title = NUMBER_PREFIX.sub("", text).strip()
             if title:
-                self.sections.append(Section(title=title, level=int(tag[1])))
+                self.sections.append(
+                    Section(title=title, level=int(tag[1]), anchor=element_id or None)
+                )
             return
 
         if tag == "p":

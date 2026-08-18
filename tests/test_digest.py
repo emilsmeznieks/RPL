@@ -32,15 +32,50 @@ class DigestTests(unittest.TestCase):
         self.assertGreaterEqual(len(self.digest.limitations), 2)
         self.assertTrue(any("synthetic" in item.text.lower() for item in self.digest.limitations))
 
+    def test_takeaways_prefer_substance_over_transition_text(self) -> None:
+        paper = Paper(
+            paper_id="paper",
+            title="Takeaway selection",
+            authors=[],
+            published=None,
+            source_url="https://arxiv.org/html/2607.10000v1",
+            abstract="This paper presents a tested architecture for a difficult problem.",
+            sections=[
+                Section(
+                    "Discussion",
+                    2,
+                    paragraphs=[
+                        "The evidence assembled across experiments supports three principal findings. "
+                        "The architecture reduced tool-selection error in the reported evaluation and preserved backend constraints."
+                    ],
+                ),
+                Section(
+                    "Conclusion",
+                    2,
+                    paragraphs=[
+                        "The study reports that role-aligned agents completed the tested workflows under human oversight."
+                    ],
+                ),
+            ],
+        )
+
+        takeaways = build_digest(paper).takeaways
+
+        self.assertIn("role-aligned agents", takeaways[0].text)
+        self.assertFalse(any("supports three principal findings" in item.text for item in takeaways))
+
     def test_renders_human_and_agent_outputs(self) -> None:
         markdown = render_markdown(self.paper, self.digest)
         payload = knowledge_payload(self.paper, self.digest)
         self.assertIn("## The core idea", markdown)
         self.assertIn("```mermaid", markdown)
         self.assertFalse(payload["provenance"]["generated_claims"])
-        self.assertEqual(payload["schema_version"], "0.2")
+        self.assertEqual(payload["schema_version"], "0.3")
         self.assertEqual(payload["visual"]["visual_type"], "process")
         self.assertEqual(payload["visual"]["nodes"][0]["label"], "Plan")
+        self.assertEqual(payload["visual"]["nodes"][0]["source_anchor"], "S2")
+        self.assertIn("Results reported in the paper", markdown)
+        self.assertIn("https://arxiv.org/html/2607.17331v1#S3", markdown)
 
     def test_html_is_standalone_and_escapes_paper_content(self) -> None:
         malicious_paper = Paper(
@@ -86,6 +121,23 @@ class DigestTests(unittest.TestCase):
         self.assertIn('aria-live="polite"', html)
         self.assertIn(".visual-controls[hidden]", html)
         self.assertIn("prefers-reduced-motion:reduce", html)
+        self.assertIn(
+            'href="https://arxiv.org/html/2607.17331v1#S3"',
+            html,
+        )
+
+    def test_generated_reader_copy_is_neutral(self) -> None:
+        html = render_html(self.paper, self.digest).lower()
+
+        self.assertIn("results reported in the paper", html)
+        for unsupported_phrase in (
+            "groundbreaking",
+            "revolutionary",
+            "this proves",
+            "obviously",
+            "undeniably",
+        ):
+            self.assertNotIn(unsupported_phrase, html)
 
 
 if __name__ == "__main__":

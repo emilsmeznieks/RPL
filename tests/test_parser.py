@@ -24,6 +24,7 @@ class ParserTests(unittest.TestCase):
         self.assertEqual([section.title for section in self.paper.sections[:2]], ["Introduction", "Methodology"])
         methodology = self.paper.sections[1]
         self.assertEqual(methodology.level, 2)
+        self.assertEqual(methodology.anchor, "S2")
         self.assertIn("S = <S_inv, S_ord, S_fin>", methodology.equations)
         self.assertIn("guarded orchestration loop", methodology.figures[0])
 
@@ -31,6 +32,17 @@ class ParserTests(unittest.TestCase):
         for html in ("", "<html><body><h1>Not a paper</h1></body></html>"):
             with self.subTest(html=html), self.assertRaises(PaperParseError):
                 parse_arxiv_html(html, "file:///tmp/input.html")
+
+    def test_heading_inherits_its_enclosing_section_anchor(self) -> None:
+        html = """
+        <meta name="citation_title" content="Anchored paper">
+        <div class="ltx_abstract"><p>A complete abstract for the anchored paper.</p></div>
+        <section id="S1"><h2>Introduction</h2><p>A section paragraph.</p></section>
+        """
+
+        paper = parse_arxiv_html(html, "https://arxiv.org/html/2607.10000v1")
+
+        self.assertEqual(paper.sections[0].anchor, "S1")
 
 
 if __name__ == "__main__":

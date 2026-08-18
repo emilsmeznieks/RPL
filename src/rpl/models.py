@@ -10,6 +10,7 @@ class Section:
 
     title: str
     level: int
+    anchor: str | None = None
     paragraphs: list[str] = field(default_factory=list)
     equations: list[str] = field(default_factory=list)
     figures: list[str] = field(default_factory=list)
@@ -41,6 +42,7 @@ class SourcedStatement:
 
     text: str
     section: str
+    section_anchor: str | None = None
 
 
 @dataclass(slots=True)
@@ -67,6 +69,7 @@ class VisualNode:
     kind: str
     source_section: str
     source_text: str
+    source_anchor: str | None = None
 
 
 @dataclass(slots=True)
@@ -90,6 +93,20 @@ class VisualSpec:
     nodes: list[VisualNode]
     edges: list[VisualEdge]
     extraction_method: str = "deterministic-visual-v1"
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(slots=True)
+class GlossaryTerm:
+    """A short form and its meaning as defined by the paper."""
+
+    short_form: str
+    term: str
+    source_section: str
+    source_text: str
+    source_anchor: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

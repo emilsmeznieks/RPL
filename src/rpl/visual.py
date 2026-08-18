@@ -108,6 +108,7 @@ def _architecture_spec(paper: Paper) -> VisualSpec | None:
                     kind="layer",
                     source_section=section.title,
                     source_text=caption,
+                    source_anchor=section.anchor,
                 )
                 for index, item in enumerate(items, start=1)
             ]
@@ -145,6 +146,7 @@ def _process_spec(paper: Paper) -> VisualSpec | None:
                         kind="step",
                         source_section=section.title,
                         source_text=paragraph,
+                        source_anchor=section.anchor,
                     )
                     for index, item in enumerate(items, start=1)
                 ]
@@ -175,6 +177,7 @@ def _outline_spec(paper: Paper) -> VisualSpec:
             kind="section",
             source_section=section.title,
             source_text=section.title,
+            source_anchor=section.anchor,
         )
         for index, section in enumerate(major, start=1)
     ]

@@ -90,6 +90,16 @@ If RPL cannot identify an architecture or process safely, it shows the paper str
 
 The HTML visual includes Play, Pause, Previous, and Next controls. Motion starts only when you select Play and is disabled when your device requests reduced motion.
 
+## Clarity and grounding rules
+
+- RPL does not add claims that are absent from the paper.
+- Results are labeled as results reported by the paper, not as proven facts.
+- Reader views remove citation-number clutter but do not replace the paper's words.
+- Technical terms are explained only when the paper defines them.
+- Source sections link to the matching place in arXiv when an exact link is available.
+
+RPL does not independently verify the paper's results. Always check important claims in the original paper.
+
 ## Using the output with an AI agent
 
 Use `paper.json` as input for a local agent, script, or research library. It contains the paper data, extracted learning card, visual model, and source information.
@@ -98,7 +108,7 @@ Example:
 
 ```json
 {
-  "schema_version": "0.2",
+  "schema_version": "0.3",
   "digest": {
     "problem": {
       "text": "A statement selected from the paper...",
@@ -114,6 +124,7 @@ Example:
     "nodes": [],
     "edges": []
   },
+  "glossary": [],
   "provenance": {
     "generated_claims": false
   }
@@ -139,7 +150,7 @@ Always check important claims in the original paper.
 
 ## Current status
 
-RPL 0.3 supports:
+RPL 0.4 supports:
 
 - arXiv HTML URLs and IDs
 - Saved arXiv HTML files
@@ -148,6 +159,9 @@ RPL 0.3 supports:
 - Process extraction from clear step sequences
 - Safe fallback to a paper-section visual
 - Play, pause, and step controls for visual explanations
+- Paper-defined terminology
+- Direct links to matching arXiv sections when available
+- Cleaner reader text without citation-number clutter
 
 Not yet included:
 

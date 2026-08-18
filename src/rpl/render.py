@@ -6,9 +6,10 @@ import json
 import re
 from html import escape
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
-from .models import Digest, Paper, SourcedStatement, VisualSpec
+from .language import build_glossary, reading_text
+from .models import Digest, GlossaryTerm, Paper, SourcedStatement, VisualSpec
 from .visual import build_visual_spec
 
 
@@ -79,16 +80,47 @@ def _interaction_script_hash() -> str:
     return base64.b64encode(digest).decode("ascii")
 
 
-def _markdown_statement(item: SourcedStatement | None) -> str:
+def _source_href(source_url: str, anchor: str | None) -> str | None:
+    if not anchor:
+        return None
+    base = source_url.split("#", 1)[0]
+    return f"{base}#{quote(anchor, safe='')}"
+
+
+def _markdown_source(
+    source_url: str, section: str, anchor: str | None
+) -> str:
+    href = _source_href(source_url, anchor)
+    return f"[{section}]({href})" if href else section
+
+
+def _markdown_statement(paper: Paper, item: SourcedStatement | None) -> str:
     if item is None:
-        return "Not confidently identified by the deterministic extractor."
-    return f"{item.text}\n\n_Source: {item.section}_"
+        return "RPL could not identify this clearly from the paper."
+    source = _markdown_source(paper.source_url, item.section, item.section_anchor)
+    return f"{reading_text(item.text)}\n\n_Source: {source}_"
 
 
-def _markdown_list(items: list[SourcedStatement]) -> str:
+def _markdown_list(paper: Paper, items: list[SourcedStatement]) -> str:
     if not items:
-        return "- Not confidently identified by the deterministic extractor."
-    return "\n".join(f"- {item.text} _(Source: {item.section})_" for item in items)
+        return "- RPL could not identify this clearly from the paper."
+    lines = []
+    for item in items:
+        source = _markdown_source(paper.source_url, item.section, item.section_anchor)
+        lines.append(f"- {reading_text(item.text)} _(Source: {source})_")
+    return "\n".join(lines)
+
+
+def _markdown_glossary(paper: Paper, terms: list[GlossaryTerm]) -> str:
+    if not terms:
+        return ""
+    lines = ["## Terms used in the paper", ""]
+    for term in terms:
+        source = _markdown_source(
+            paper.source_url, term.source_section, term.source_anchor
+        )
+        lines.append(f"- **{term.short_form}:** {term.term} _(Source: {source})_")
+    return "\n".join(lines) + "\n\n"
 
 
 def _node_label(value: str, maximum: int = 42) -> str:
@@ -112,9 +144,10 @@ def outline_mermaid(paper: Paper) -> str:
 def render_markdown(paper: Paper, digest: Digest) -> str:
     authors = ", ".join(paper.authors) or "Unknown authors"
     keywords = ", ".join(paper.keywords) or "Not provided"
+    glossary = build_glossary(paper)
     return f"""# {paper.title}
 
-> RPL extractive learning card · [{paper.paper_id}]({paper.source_url})
+> RPL paper guide · [{paper.paper_id}]({paper.source_url})
 
 **Authors:** {authors}  
 **Published:** {paper.published or "Unknown"}  
@@ -122,25 +155,25 @@ def render_markdown(paper: Paper, digest: Digest) -> str:
 
 ## The problem
 
-{_markdown_statement(digest.problem)}
+{_markdown_statement(paper, digest.problem)}
 
 ## The core idea
 
-{_markdown_statement(digest.core_idea)}
+{_markdown_statement(paper, digest.core_idea)}
 
-## Evidence worth checking
+## Results reported in the paper
 
-{_markdown_list(digest.evidence)}
+{_markdown_list(paper, digest.evidence)}
 
 ## Limitations
 
-{_markdown_list(digest.limitations)}
+{_markdown_list(paper, digest.limitations)}
 
-## What to remember
+## Key points from the discussion
 
-{_markdown_list(digest.takeaways)}
+{_markdown_list(paper, digest.takeaways)}
 
-## Paper map
+{_markdown_glossary(paper, glossary)}## Paper map
 
 ```mermaid
 {outline_mermaid(paper)}
@@ -148,21 +181,23 @@ def render_markdown(paper: Paper, digest: Digest) -> str:
 
 ## Abstract
 
-{paper.abstract or "No abstract extracted."}
+{reading_text(paper.abstract) or "No abstract extracted."}
 
 ---
 
-This card was produced by `{digest.extraction_method}`. It selects text from the paper and does not yet use an LLM. Always verify important claims in the original source.
+RPL selected these statements from the paper. Always verify important claims in the original source.
 """
 
 
 def knowledge_payload(paper: Paper, digest: Digest) -> dict[str, Any]:
     visual = build_visual_spec(paper)
+    glossary = build_glossary(paper)
     return {
-        "schema_version": "0.2",
+        "schema_version": "0.3",
         "paper": paper.to_dict(),
         "digest": digest.to_dict(),
         "visual": visual.to_dict(),
+        "glossary": [term.to_dict() for term in glossary],
         "provenance": {
             "source_url": paper.source_url,
             "extraction_method": digest.extraction_method,
@@ -182,24 +217,34 @@ def _safe_href(value: str) -> str:
     return "#"
 
 
-def _html_statement(item: SourcedStatement | None) -> str:
+def _html_source(
+    source_url: str, section: str, anchor: str | None, class_name: str
+) -> str:
+    href = _source_href(source_url, anchor)
+    label = escape(section)
+    if href:
+        label = f'<a href="{_safe_href(href)}">{label}</a>'
+    return f'<p class="{class_name}">Source · {label}</p>'
+
+
+def _html_statement(paper: Paper, item: SourcedStatement | None) -> str:
     if item is None:
-        return '<p class="muted">Not confidently identified by the deterministic extractor.</p>'
+        return '<p class="muted">RPL could not identify this clearly from the paper.</p>'
     return (
-        f"<p>{escape(item.text)}</p>"
-        f'<p class="source-label">Source · {escape(item.section)}</p>'
+        f"<p>{escape(reading_text(item.text))}</p>"
+        f"{_html_source(paper.source_url, item.section, item.section_anchor, 'source-label')}"
     )
 
 
-def _html_list(items: list[SourcedStatement]) -> str:
+def _html_list(paper: Paper, items: list[SourcedStatement]) -> str:
     if not items:
-        return '<p class="muted">Not confidently identified by the deterministic extractor.</p>'
+        return '<p class="muted">RPL could not identify this clearly from the paper.</p>'
     cards = []
     for item in items:
         cards.append(
             '<li class="statement">'
-            f"<p>{escape(item.text)}</p>"
-            f'<p class="source-label">Source · {escape(item.section)}</p>'
+            f"<p>{escape(reading_text(item.text))}</p>"
+            f"{_html_source(paper.source_url, item.section, item.section_anchor, 'source-label')}"
             "</li>"
         )
     return f'<ul class="statement-list">{"".join(cards)}</ul>'
@@ -220,17 +265,43 @@ def _html_paper_map(paper: Paper) -> str:
     return f'<ol class="paper-map">{"".join(nodes)}</ol>'
 
 
-def _html_visual(spec: VisualSpec) -> str:
+def _html_glossary(paper: Paper, terms: list[GlossaryTerm]) -> str:
+    if not terms:
+        return ""
+    items = []
+    for term in terms:
+        source = _html_source(
+            paper.source_url,
+            term.source_section,
+            term.source_anchor,
+            "term-source",
+        )
+        items.append(
+            '<div class="term">'
+            f"<dt>{escape(term.short_form)}</dt>"
+            f"<dd>{escape(term.term)}{source}</dd>"
+            "</div>"
+        )
+    return (
+        '<section class="card wide" aria-labelledby="terms">'
+        '<h2 id="terms">Terms used in the paper</h2>'
+        '<p class="muted">These meanings are taken from definitions in the paper.</p>'
+        f'<dl class="glossary">{"".join(items)}</dl>'
+        "</section>"
+    )
+
+
+def _html_visual(paper: Paper, spec: VisualSpec) -> str:
     nodes = []
     for index, node in enumerate(spec.nodes, start=1):
         nodes.append(
             f'<li class="visual-node" data-step="{index - 1}">'
             f'<span class="visual-number">{index:02d}</span>'
             f'<strong>{escape(node.label)}</strong>'
-            f'<span class="visual-source">{escape(node.source_section)}</span>'
+            f"{_html_source(paper.source_url, node.source_section, node.source_anchor, 'visual-source')}"
             "</li>"
         )
-    confidence = f"{spec.confidence.capitalize()} confidence"
+    confidence = f"RPL confidence · {spec.confidence.capitalize()}"
     return (
         '<div class="visual-stage" data-rpl-visual>'
         '<div class="visual-heading">'
@@ -257,6 +328,7 @@ def render_html(paper: Paper, digest: Digest) -> str:
     authors = ", ".join(paper.authors) or "Unknown authors"
     keywords = ", ".join(paper.keywords) or "Not provided"
     visual = build_visual_spec(paper)
+    glossary = build_glossary(paper)
     agent_json = escape(render_json(paper, digest))
     script_hash = _interaction_script_hash()
     return f"""<!doctype html>
@@ -299,7 +371,14 @@ def render_html(paper: Paper, digest: Digest) -> str:
     .visual-node {{ position:relative; flex:1 0 150px; min-height:150px; display:flex; flex-direction:column; justify-content:space-between; gap:14px; padding:18px; border:1px solid var(--accent); border-radius:14px; background:var(--soft); }}
     .visual-node:not(:last-child)::after {{ content:"→"; position:absolute; left:calc(100% + 8px); top:50%; width:12px; color:var(--accent); font-weight:800; transform:translateY(-50%); }}
     .visual-number,.visual-source {{ color:var(--accent); font-size:.72rem; font-weight:750; letter-spacing:.08em; text-transform:uppercase; }}
+    .visual-source {{ margin:0; }}
     .visual-node strong {{ font:1.25rem/1.15 ui-serif,Georgia,serif; }}
+    .source-label a,.visual-source a,.term-source a {{ color:inherit; }}
+    .glossary {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:12px; margin:18px 0 0; }}
+    .term {{ padding:16px; border:1px solid var(--line); border-radius:12px; background:var(--bg); }}
+    .term dt {{ color:var(--accent); font-weight:800; }}
+    .term dd {{ margin:4px 0 0; }}
+    .term-source {{ margin:10px 0 0; color:var(--muted); font-size:.72rem; font-weight:700; letter-spacing:.07em; text-transform:uppercase; }}
     .visual-controls {{ display:flex; align-items:center; justify-content:space-between; gap:16px; margin-top:18px; }}
     .visual-controls[hidden] {{ display:none; }}
     .visual-buttons {{ display:flex; flex-wrap:wrap; gap:8px; }}
@@ -326,7 +405,7 @@ def render_html(paper: Paper, digest: Digest) -> str:
 <body>
   <header class="hero">
     <div class="shell">
-      <div class="eyebrow">RPL · Extractive learning card</div>
+      <div class="eyebrow">RPL · Research paper guide</div>
       <h1>{escape(paper.title)}</h1>
       <div class="meta">
         <span>{escape(authors)}</span>
@@ -336,21 +415,22 @@ def render_html(paper: Paper, digest: Digest) -> str:
     </div>
   </header>
   <main class="shell grid">
-    <section class="card" aria-labelledby="problem"><h2 id="problem">The problem</h2>{_html_statement(digest.problem)}</section>
-    <section class="card" aria-labelledby="idea"><h2 id="idea">The core idea</h2>{_html_statement(digest.core_idea)}</section>
-    <section class="card wide" aria-labelledby="visual"><h2 id="visual">{escape(visual.title)}</h2>{_html_visual(visual)}</section>
+    <section class="card" aria-labelledby="problem"><h2 id="problem">The problem</h2>{_html_statement(paper, digest.problem)}</section>
+    <section class="card" aria-labelledby="idea"><h2 id="idea">The core idea</h2>{_html_statement(paper, digest.core_idea)}</section>
+    <section class="card wide" aria-labelledby="visual"><h2 id="visual">{escape(visual.title)}</h2>{_html_visual(paper, visual)}</section>
     <section class="card wide" aria-labelledby="map"><h2 id="map">Paper map</h2>{_html_paper_map(paper)}</section>
-    <section class="card" aria-labelledby="evidence"><h2 id="evidence">Evidence worth checking</h2>{_html_list(digest.evidence)}</section>
-    <section class="card" aria-labelledby="limits"><h2 id="limits">Limitations</h2>{_html_list(digest.limitations)}</section>
-    <section class="card wide" aria-labelledby="remember"><h2 id="remember">What to remember</h2>{_html_list(digest.takeaways)}</section>
-    <section class="card wide" aria-labelledby="abstract"><h2 id="abstract">Abstract</h2><p>{escape(paper.abstract)}</p><p class="source-label">Keywords · {escape(keywords)}</p></section>
+    <section class="card" aria-labelledby="evidence"><h2 id="evidence">Results reported in the paper</h2>{_html_list(paper, digest.evidence)}</section>
+    <section class="card" aria-labelledby="limits"><h2 id="limits">Limitations</h2>{_html_list(paper, digest.limitations)}</section>
+    <section class="card wide" aria-labelledby="remember"><h2 id="remember">Key points from the discussion</h2>{_html_list(paper, digest.takeaways)}</section>
+    {_html_glossary(paper, glossary)}
+    <section class="card wide" aria-labelledby="abstract"><h2 id="abstract">Abstract</h2><p>{escape(reading_text(paper.abstract))}</p><p class="source-label">Keywords · {escape(keywords)}</p></section>
     <section class="card wide" aria-labelledby="agent-data">
-      <h2 id="agent-data">For AI agents</h2>
-      <p>The same card as structured, provenance-aware JSON. Copy it into a local library or agent workflow.</p>
-      <details><summary>Show agent-ready JSON</summary><pre>{agent_json}</pre></details>
+      <h2 id="agent-data">Structured data</h2>
+      <p>Use this JSON with an AI agent, script, or research library.</p>
+      <details><summary>Show JSON</summary><pre>{agent_json}</pre></details>
     </section>
   </main>
-  <footer class="shell">Produced by {escape(digest.extraction_method)}. RPL selects text from the paper and does not yet use an LLM. Verify important claims in the original.</footer>
+  <footer class="shell">RPL selected these statements from the paper. Always verify important claims in the original source.</footer>
   <script>{INTERACTION_SCRIPT}</script>
 </body>
 </html>
