@@ -22,16 +22,16 @@ source .venv/bin/activate
 python -m pip install .
 ```
 
-Process a paper:
+RPL is not tied to the paper used in our tests. Process another arXiv paper by replacing `YOUR_ARXIV_ID` with its ID:
 
 ```bash
-rpl learn https://arxiv.org/html/2607.17331v1
+rpl learn https://arxiv.org/html/YOUR_ARXIV_ID
 ```
 
 The files are saved here:
 
 ```text
-rpl-output/2607.17331v1/
+rpl-output/YOUR_ARXIV_ID/
 ├── paper.html
 ├── paper.md
 └── paper.json
@@ -41,31 +41,39 @@ Open `paper.html` in any browser to read the result.
 
 ## Other ways to run RPL
 
-Use an arXiv ID instead of a full URL:
+Use the paper's arXiv ID instead of a full URL:
 
 ```bash
-rpl learn 2607.17331v1
+rpl learn YOUR_ARXIV_ID
+```
+
+RPL also accepts arXiv abstract and PDF links. It automatically uses the paper's HTML version for extraction, which must be available on arXiv.
+
+The Agentic ERP paper is the current development test example:
+
+```bash
+rpl learn https://arxiv.org/html/2607.17331v1
 ```
 
 Choose a different output folder:
 
 ```bash
-rpl learn 2607.17331v1 --output ./my-library
+rpl learn YOUR_ARXIV_ID --output ./my-library
 ```
 
 Create only one file type:
 
 ```bash
-rpl learn 2607.17331v1 --format html
-rpl learn 2607.17331v1 --format markdown
-rpl learn 2607.17331v1 --format json
+rpl learn YOUR_ARXIV_ID --format html
+rpl learn YOUR_ARXIV_ID --format markdown
+rpl learn YOUR_ARXIV_ID --format json
 ```
 
 Print Markdown or JSON in the terminal:
 
 ```bash
-rpl learn 2607.17331v1 --format markdown --stdout
-rpl learn 2607.17331v1 --format json --stdout
+rpl learn YOUR_ARXIV_ID --format markdown --stdout
+rpl learn YOUR_ARXIV_ID --format json --stdout
 ```
 
 Process a saved arXiv HTML file:
