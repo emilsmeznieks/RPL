@@ -1,0 +1,4 @@
+# Changes to code or repository automation should be reviewed by the maintainer.
+* @emilsmeznieks
+/.github/ @emilsmeznieks
+/pyproject.toml @emilsmeznieks
