@@ -197,7 +197,7 @@ Supported relationship types are `same-topic`, `shared-task`, `shared-method`, `
 
 Similarity relationships require evidence from both papers. Until automatic discovery runs, the status remains `not-generated`; RPL does not return an empty list as if it had searched and found nothing.
 
-Direct connections for Claude, ChatGPT, Codex, and other agents are planned after the local tool is stable.
+Compatible AI clients can use this data through RPL's local MCP server. Automatic related-paper discovery is not implemented yet.
 
 ## How it works
 
@@ -240,14 +240,13 @@ Not yet included:
 - AI-written explanations
 - Automatic discovery and comparison of related papers
 - A saved research library
-- Agent connections through Model Context Protocol (MCP)
 
 ## Roadmap
 
 1. Add cited AI explanations.
 2. Find and populate related-paper comparisons.
 3. Build local research libraries.
-4. Add MCP tools for AI agents.
+4. Add more focused MCP tools as those features become stable.
 
 ## Development
 
@@ -262,6 +261,17 @@ Run the tests:
 ```bash
 python -m unittest discover -s tests -v
 ```
+
+Run a dependency security audit:
+
+```bash
+python -m pip install -e ".[mcp,security]"
+python -m pip_audit --skip-editable
+```
+
+## Security
+
+Do not report vulnerabilities in a public issue. Follow the private reporting steps in [SECURITY.md](SECURITY.md).
 
 ## Contributing
 
