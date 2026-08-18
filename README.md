@@ -116,13 +116,13 @@ RPL does not independently verify the paper's results. Always check important cl
 
 ## Using the output with an AI agent
 
-Use `paper.json` as input for a local agent, script, or research library. It contains the paper data, extracted learning card, visual model, and source information.
+Use `paper.json` as input for a local agent, script, or research library. It contains the paper data, extracted learning card, visual model, comparison data, and source information.
 
 Example:
 
 ```json
 {
-  "schema_version": "0.5",
+  "schema_version": "0.6",
   "digest": {
     "paper_type": "empirical",
     "paper_type_confidence": "high",
@@ -142,11 +142,31 @@ Example:
     "edges": []
   },
   "glossary": [],
+  "comparison": {
+    "schema_version": "0.1",
+    "focal_paper_id": "YOUR_ARXIV_ID",
+    "status": "not-generated",
+    "related_papers": [],
+    "relation_signals": [],
+    "dimensions": [],
+    "discovery_method": "not-run",
+    "generated_claims": false
+  },
   "provenance": {
     "generated_claims": false
   }
 }
 ```
+
+The comparison model separates:
+
+- `related_papers` — paper identity and source metadata
+- `relation_signals` — why papers are related, with exact evidence from each paper
+- `dimensions` — sourced side-by-side values such as problem, method, dataset, or result
+
+Supported relationship types are `same-topic`, `shared-task`, `shared-method`, `shared-equation`, `shared-dataset`, `cites`, and `cited-by`.
+
+Similarity relationships require evidence from both papers. Until automatic discovery runs, the status remains `not-generated`; RPL does not return an empty list as if it had searched and found nothing.
 
 Direct connections for Claude, ChatGPT, Codex, and other agents are planned after the local tool is stable.
 
@@ -181,19 +201,20 @@ RPL 0.7 supports:
 - Direct links to matching arXiv paragraphs or sections
 - One selected statement per exact source paragraph in each output section
 - Paper-type-aware result extraction for empirical and theoretical papers
+- An evidence-backed JSON model for future related-paper comparisons
 - Cleaner reader text without citation-number clutter
 
 Not yet included:
 
 - AI-written explanations
-- Comparisons with related papers
+- Automatic discovery and comparison of related papers
 - A saved research library
 - Agent connections through Model Context Protocol (MCP)
 
 ## Roadmap
 
 1. Add cited AI explanations.
-2. Compare related papers.
+2. Find and populate related-paper comparisons.
 3. Build local research libraries.
 4. Add MCP tools for AI agents.
 

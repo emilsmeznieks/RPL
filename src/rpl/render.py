@@ -8,8 +8,16 @@ from html import escape
 from typing import Any
 from urllib.parse import quote, urlparse
 
+from .comparison import empty_comparison_set, validate_comparison_set
 from .language import build_glossary, reading_text
-from .models import Digest, GlossaryTerm, Paper, SourcedStatement, VisualSpec
+from .models import (
+    ComparisonSet,
+    Digest,
+    GlossaryTerm,
+    Paper,
+    SourcedStatement,
+    VisualSpec,
+)
 from .visual import build_visual_spec
 
 
@@ -201,15 +209,22 @@ RPL selected these statements from the paper. Always verify important claims in 
 """
 
 
-def knowledge_payload(paper: Paper, digest: Digest) -> dict[str, Any]:
+def knowledge_payload(
+    paper: Paper, digest: Digest, comparison: ComparisonSet | None = None
+) -> dict[str, Any]:
     visual = build_visual_spec(paper)
     glossary = build_glossary(paper)
+    comparison = comparison or empty_comparison_set(paper)
+    if comparison.focal_paper_id != paper.paper_id:
+        raise ValueError("The comparison focal paper must match the rendered paper.")
+    validate_comparison_set(comparison)
     return {
-        "schema_version": "0.5",
+        "schema_version": "0.6",
         "paper": paper.to_dict(),
         "digest": digest.to_dict(),
         "visual": visual.to_dict(),
         "glossary": [term.to_dict() for term in glossary],
+        "comparison": comparison.to_dict(),
         "provenance": {
             "source_url": paper.source_url,
             "extraction_method": digest.extraction_method,
@@ -218,8 +233,12 @@ def knowledge_payload(paper: Paper, digest: Digest) -> dict[str, Any]:
     }
 
 
-def render_json(paper: Paper, digest: Digest) -> str:
-    return json.dumps(knowledge_payload(paper, digest), indent=2, ensure_ascii=False) + "\n"
+def render_json(
+    paper: Paper, digest: Digest, comparison: ComparisonSet | None = None
+) -> str:
+    return json.dumps(
+        knowledge_payload(paper, digest, comparison), indent=2, ensure_ascii=False
+    ) + "\n"
 
 
 def _safe_href(value: str) -> str:

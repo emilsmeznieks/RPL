@@ -114,3 +114,70 @@ class GlossaryTerm:
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+
+@dataclass(slots=True)
+class RelatedPaper:
+    """Metadata for a paper compared with the focal paper."""
+
+    paper_id: str
+    title: str
+    authors: list[str]
+    published: str | None
+    source_url: str
+
+
+@dataclass(slots=True)
+class ComparisonEvidence:
+    """Exact paper text supporting a relationship between two papers."""
+
+    paper_id: str
+    text: str
+    section: str
+    source_anchor: str | None = None
+
+
+@dataclass(slots=True)
+class RelationSignal:
+    """A sourced reason that a candidate paper is related to the focal paper."""
+
+    related_paper_id: str
+    kind: str
+    confidence: str
+    evidence: list[ComparisonEvidence]
+
+
+@dataclass(slots=True)
+class ComparisonValue:
+    """One paper's sourced value for a comparison dimension."""
+
+    paper_id: str
+    text: str
+    section: str
+    source_anchor: str | None = None
+
+
+@dataclass(slots=True)
+class ComparisonDimension:
+    """A named question answered side by side for two or more papers."""
+
+    key: str
+    label: str
+    values: list[ComparisonValue]
+
+
+@dataclass(slots=True)
+class ComparisonSet:
+    """Provider-neutral, evidence-backed related-paper comparison data."""
+
+    schema_version: str
+    focal_paper_id: str
+    status: str
+    related_papers: list[RelatedPaper]
+    relation_signals: list[RelationSignal]
+    dimensions: list[ComparisonDimension]
+    discovery_method: str
+    generated_claims: bool = False
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
