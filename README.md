@@ -4,7 +4,7 @@ RPL turns an arXiv paper into a short learning package for people and AI agents.
 
 Give RPL an arXiv URL or ID. It creates:
 
-- `paper.html` — a readable page with key ideas, evidence, limitations, and an interactive visual explanation
+- `paper.html` — a readable, responsive page with key ideas, evidence, limitations, and an interactive visual explanation
 - `paper.md` — a learning card in Markdown
 - `paper.json` — structured content with source information for AI agents and other tools
 
@@ -172,6 +172,7 @@ RPL 0.7 supports:
 - Modern and legacy arXiv URLs and IDs
 - Saved arXiv HTML files
 - Standalone HTML, Markdown, and JSON output
+- System-native HTML styling with light, dark, and increased-contrast modes
 - Architecture extraction from figure captions
 - Process extraction from clear step sequences
 - Safe fallback to a paper-section visual

@@ -224,6 +224,17 @@ class DigestTests(unittest.TestCase):
             html,
         )
 
+    def test_html_uses_native_reading_and_accessibility_foundations(self) -> None:
+        html = render_html(self.paper, self.digest)
+
+        self.assertIn('-apple-system,BlinkMacSystemFont,"SF Pro Text"', html)
+        self.assertIn("min-height:44px", html)
+        self.assertIn("@media (prefers-contrast:more)", html)
+        self.assertIn("@media (prefers-color-scheme:dark)", html)
+        self.assertIn('class="skip-link" href="#main-content"', html)
+        self.assertIn('aria-label="RPL paper classification"', html)
+        self.assertNotIn("visual-pulse", html)
+
     def test_older_section_data_falls_back_to_the_section_anchor(self) -> None:
         paper = Paper(
             paper_id="paper",

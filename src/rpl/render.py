@@ -349,6 +349,11 @@ def render_html(paper: Paper, digest: Digest) -> str:
     glossary = build_glossary(paper)
     agent_json = escape(render_json(paper, digest))
     script_hash = _interaction_script_hash()
+    paper_type = {
+        "empirical": "Empirical paper",
+        "theoretical": "Theoretical paper",
+    }.get(digest.paper_type, "Paper type uncertain")
+    type_confidence = f"{digest.paper_type_confidence.capitalize()} confidence"
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -357,72 +362,82 @@ def render_html(paper: Paper, digest: Digest) -> str:
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'sha256-{script_hash}'; img-src data:; base-uri 'none'; form-action 'none'">
   <title>{escape(paper.title)} · RPL</title>
   <style>
-    :root {{ color-scheme: light dark; --bg:#f4f1e9; --surface:#fffdf7; --ink:#17221d; --muted:#65716a; --line:#d7d6cd; --accent:#245f4b; --soft:#e3eee8; --warning:#8b4a2f; }}
+    :root {{ color-scheme:light dark; --bg:#f5f5f7; --surface:rgba(255,255,255,.86); --surface-solid:#fff; --surface-raised:#fff; --ink:#1d1d1f; --muted:#6e6e73; --line:rgba(60,60,67,.18); --line-strong:rgba(60,60,67,.3); --accent:#007aff; --accent-strong:#0066cc; --accent-soft:rgba(0,122,255,.09); --code:#1c1c1e; --code-ink:#f5f5f7; --shadow:0 1px 2px rgba(0,0,0,.04),0 12px 32px rgba(0,0,0,.06); }}
     * {{ box-sizing:border-box; }}
-    html {{ scroll-behavior:smooth; }}
-    body {{ margin:0; background:var(--bg); color:var(--ink); font:16px/1.65 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }}
-    a {{ color:var(--accent); text-underline-offset:.18em; }}
-    .shell {{ width:min(1120px,calc(100% - 32px)); margin:0 auto; }}
-    .hero {{ padding:72px 0 42px; border-bottom:1px solid var(--line); }}
-    .eyebrow,.source-label {{ color:var(--accent); font-size:.76rem; font-weight:750; letter-spacing:.09em; text-transform:uppercase; }}
-    h1 {{ max-width:900px; margin:.35rem 0 1.2rem; font:clamp(2.2rem,6vw,5rem)/1.02 ui-serif,Georgia,serif; letter-spacing:-.045em; }}
-    h2 {{ margin:0 0 1rem; font:clamp(1.45rem,3vw,2.1rem)/1.15 ui-serif,Georgia,serif; }}
-    p {{ margin:.4rem 0 1rem; }}
-    .meta {{ display:flex; flex-wrap:wrap; gap:.45rem 1.2rem; color:var(--muted); }}
+    html {{ scroll-behavior:smooth; font-size:100%; }}
+    body {{ margin:0; background:var(--bg); color:var(--ink); font:clamp(1rem,.97rem + .18vw,1.0625rem)/1.58 -apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue","Segoe UI",sans-serif; letter-spacing:-.011em; -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility; }}
+    a {{ color:var(--accent-strong); text-decoration-thickness:.08em; text-underline-offset:.2em; }}
+    a:hover {{ color:var(--accent); }}
+    a:focus-visible,button:focus-visible,summary:focus-visible {{ outline:3px solid var(--accent); outline-offset:3px; border-radius:6px; }}
+    .skip-link {{ position:fixed; z-index:20; top:10px; left:10px; padding:10px 14px; border-radius:10px; background:var(--surface-solid); color:var(--ink); font-weight:650; transform:translateY(-150%); box-shadow:var(--shadow); }}
+    .skip-link:focus {{ transform:none; }}
+    .shell {{ width:min(1160px,calc(100% - 40px)); margin:0 auto; }}
+    .hero {{ padding:clamp(56px,8vw,104px) 0 clamp(38px,5vw,64px); background:linear-gradient(180deg,var(--surface-solid),var(--bg)); border-bottom:1px solid var(--line); }}
+    .hero-copy {{ max-width:960px; }}
+    .eyebrow,.source-label {{ color:var(--muted); font-size:.75rem; font-weight:700; letter-spacing:.045em; text-transform:uppercase; }}
+    h1,h2,.visual-node strong {{ font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Helvetica Neue","Segoe UI",sans-serif; }}
+    h1 {{ max-width:940px; margin:.45rem 0 1.35rem; font-size:clamp(2.55rem,6vw,4.75rem); line-height:1.03; font-weight:750; letter-spacing:-.05em; text-wrap:balance; }}
+    h2 {{ margin:0 0 1.1rem; font-size:clamp(1.45rem,2.4vw,1.9rem); line-height:1.16; font-weight:700; letter-spacing:-.027em; text-wrap:balance; }}
+    p {{ margin:.45rem 0 1rem; }}
+    .meta {{ display:flex; flex-wrap:wrap; gap:.5rem 1.15rem; color:var(--muted); font-size:.94rem; }}
     .meta span {{ max-width:100%; }}
-    .grid {{ display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:18px; padding:32px 0; }}
-    .card {{ background:var(--surface); border:1px solid var(--line); border-radius:18px; padding:clamp(20px,3vw,32px); box-shadow:0 8px 30px rgb(25 40 31 / .05); }}
+    .classification {{ display:flex; flex-wrap:wrap; gap:8px; margin-top:22px; }}
+    .badge {{ display:inline-flex; align-items:center; min-height:30px; padding:5px 10px; border:1px solid var(--line); border-radius:999px; background:var(--surface); color:var(--muted); font-size:.78rem; font-weight:650; letter-spacing:-.005em; backdrop-filter:blur(18px) saturate(140%); -webkit-backdrop-filter:blur(18px) saturate(140%); }}
+    .badge-primary {{ border-color:rgba(0,122,255,.22); background:var(--accent-soft); color:var(--accent-strong); }}
+    .grid {{ display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:20px; padding:32px 0 44px; }}
+    .card {{ min-width:0; background:var(--surface); border:1px solid var(--line); border-radius:24px; padding:clamp(22px,3vw,34px); box-shadow:var(--shadow); backdrop-filter:blur(24px) saturate(130%); -webkit-backdrop-filter:blur(24px) saturate(130%); }}
     .wide {{ grid-column:1/-1; }}
-    .muted {{ color:var(--muted); font-style:italic; }}
+    .wide > p {{ max-width:78ch; }}
+    .muted {{ color:var(--muted); }}
     .source-label {{ margin:1rem 0 0; }}
-    .statement-list {{ display:grid; gap:12px; margin:0; padding:0; list-style:none; }}
-    .statement {{ padding:14px 16px; border-left:3px solid var(--accent); background:var(--soft); border-radius:0 10px 10px 0; }}
+    .statement-list {{ display:grid; gap:10px; margin:0; padding:0; list-style:none; }}
+    .statement {{ padding:16px 18px; border:1px solid var(--line); border-radius:16px; background:var(--surface-solid); }}
     .statement p:first-child {{ margin-top:0; }}
     .statement p:last-child {{ margin-bottom:0; }}
-    .paper-map {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:12px; margin:0; padding:0; list-style:none; counter-reset:item; }}
-    .map-node {{ min-height:118px; display:flex; flex-direction:column; justify-content:space-between; padding:16px; border:1px solid var(--line); border-radius:12px; background:var(--bg); font-weight:700; }}
-    .map-number {{ color:var(--accent); font-size:.78rem; letter-spacing:.1em; }}
+    .paper-map {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin:0; padding:0; list-style:none; counter-reset:item; }}
+    .map-node {{ min-height:112px; display:flex; flex-direction:column; justify-content:space-between; padding:16px; border:1px solid var(--line); border-radius:16px; background:var(--surface-solid); font-weight:650; }}
+    .map-number {{ color:var(--muted); font-size:.75rem; font-weight:700; letter-spacing:.035em; }}
     .visual-heading {{ display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:18px; color:var(--muted); }}
     .visual-heading p {{ margin:0; }}
-    .confidence {{ flex:none; padding:5px 9px; border:1px solid var(--line); border-radius:999px; font-size:.72rem; font-weight:750; letter-spacing:.05em; text-transform:uppercase; }}
-    .visual-flow {{ display:flex; align-items:stretch; gap:28px; margin:0; padding:0; list-style:none; overflow-x:auto; }}
-    .visual-node {{ position:relative; flex:1 0 150px; min-height:150px; display:flex; flex-direction:column; justify-content:space-between; gap:14px; padding:18px; border:1px solid var(--accent); border-radius:14px; background:var(--soft); }}
-    .visual-node:not(:last-child)::after {{ content:"→"; position:absolute; left:calc(100% + 8px); top:50%; width:12px; color:var(--accent); font-weight:800; transform:translateY(-50%); }}
-    .visual-number,.visual-source {{ color:var(--accent); font-size:.72rem; font-weight:750; letter-spacing:.08em; text-transform:uppercase; }}
+    .confidence {{ flex:none; padding:5px 9px; border:1px solid var(--line); border-radius:999px; font-size:.72rem; font-weight:700; letter-spacing:.025em; text-transform:uppercase; }}
+    .visual-flow {{ display:flex; align-items:stretch; gap:28px; margin:0; padding:0 2px 6px; list-style:none; overflow-x:auto; scrollbar-width:thin; }}
+    .visual-node {{ position:relative; flex:1 0 160px; min-height:148px; display:flex; flex-direction:column; justify-content:space-between; gap:14px; padding:18px; border:1px solid var(--line-strong); border-radius:18px; background:var(--surface-solid); }}
+    .visual-node:not(:last-child)::after {{ content:"→"; position:absolute; left:calc(100% + 8px); top:50%; width:12px; color:var(--muted); font-weight:700; transform:translateY(-50%); }}
+    .visual-number,.visual-source {{ color:var(--muted); font-size:.72rem; font-weight:700; letter-spacing:.035em; text-transform:uppercase; }}
     .visual-source {{ margin:0; }}
-    .visual-node strong {{ font:1.25rem/1.15 ui-serif,Georgia,serif; }}
+    .visual-node strong {{ font-size:1.15rem; line-height:1.2; font-weight:700; letter-spacing:-.015em; }}
     .source-label a,.visual-source a,.term-source a {{ color:inherit; }}
     .glossary {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:12px; margin:18px 0 0; }}
-    .term {{ padding:16px; border:1px solid var(--line); border-radius:12px; background:var(--bg); }}
-    .term dt {{ color:var(--accent); font-weight:800; }}
+    .term {{ padding:16px; border:1px solid var(--line); border-radius:16px; background:var(--surface-solid); }}
+    .term dt {{ color:var(--ink); font-weight:750; }}
     .term dd {{ margin:4px 0 0; }}
-    .term-source {{ margin:10px 0 0; color:var(--muted); font-size:.72rem; font-weight:700; letter-spacing:.07em; text-transform:uppercase; }}
+    .term-source {{ margin:10px 0 0; color:var(--muted); font-size:.72rem; font-weight:650; letter-spacing:.025em; text-transform:uppercase; }}
     .visual-controls {{ display:flex; align-items:center; justify-content:space-between; gap:16px; margin-top:18px; }}
     .visual-controls[hidden] {{ display:none; }}
     .visual-buttons {{ display:flex; flex-wrap:wrap; gap:8px; }}
-    .visual-buttons button {{ padding:8px 12px; border:1px solid var(--line); border-radius:9px; background:var(--surface); color:var(--ink); cursor:pointer; font:inherit; font-weight:700; }}
-    .visual-buttons button:hover:not(:disabled) {{ border-color:var(--accent); color:var(--accent); }}
-    .visual-buttons button:focus-visible {{ outline:3px solid var(--accent); outline-offset:2px; }}
-    .visual-buttons button:disabled {{ cursor:not-allowed; opacity:.42; }}
+    .visual-buttons button {{ min-height:44px; padding:10px 15px; border:1px solid var(--line-strong); border-radius:12px; background:var(--surface-solid); color:var(--ink); cursor:pointer; font:inherit; font-size:.94rem; font-weight:650; }}
+    .visual-buttons button:hover:not(:disabled) {{ border-color:var(--accent); background:var(--accent-soft); color:var(--accent-strong); }}
+    .visual-buttons button:active:not(:disabled) {{ transform:scale(.98); }}
+    .visual-buttons button:disabled {{ cursor:not-allowed; opacity:.38; }}
     .visual-status {{ margin:0; color:var(--muted); font-size:.88rem; font-weight:650; text-align:right; }}
-    .is-interactive .visual-node {{ opacity:.46; filter:saturate(.55); transition:opacity .3s ease,filter .3s ease,transform .3s ease,box-shadow .3s ease; }}
-    .is-interactive .visual-node.is-complete {{ opacity:.76; filter:saturate(.8); }}
-    .is-interactive .visual-node.is-current {{ z-index:1; opacity:1; filter:none; transform:translateY(-5px); box-shadow:0 10px 24px rgb(36 95 75 / .18); }}
-    .is-playing .visual-node.is-current {{ animation:visual-pulse 1.4s ease-in-out infinite; }}
-    @keyframes visual-pulse {{ 50% {{ box-shadow:0 10px 30px rgb(36 95 75 / .32); }} }}
+    .is-interactive .visual-node {{ opacity:.5; transition:opacity .22s ease,transform .22s ease,box-shadow .22s ease,border-color .22s ease; }}
+    .is-interactive .visual-node.is-complete {{ opacity:.72; }}
+    .is-interactive .visual-node.is-current {{ z-index:1; opacity:1; transform:translateY(-3px); border-color:rgba(0,122,255,.55); box-shadow:0 8px 24px rgba(0,122,255,.12); }}
     details {{ border-top:1px solid var(--line); padding-top:16px; }}
-    summary {{ cursor:pointer; font-weight:700; }}
-    pre {{ max-height:420px; overflow:auto; padding:16px; border-radius:10px; background:#101915; color:#e7f3ec; font:13px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace; white-space:pre-wrap; overflow-wrap:anywhere; }}
-    footer {{ padding:12px 0 48px; color:var(--muted); font-size:.9rem; }}
-    @media (max-width:720px) {{ .hero {{ padding-top:46px; }} .grid {{ grid-template-columns:1fr; }} .wide {{ grid-column:auto; }} .visual-heading,.visual-controls {{ align-items:flex-start; flex-direction:column; }} .visual-flow {{ display:grid; overflow:visible; }} .visual-node {{ min-height:112px; }} .visual-node:not(:last-child)::after {{ content:"↓"; left:50%; top:calc(100% + 5px); transform:translateX(-50%); }} .visual-status {{ text-align:left; }} }}
-    @media (prefers-color-scheme:dark) {{ :root {{ --bg:#111713; --surface:#18201b; --ink:#eef4ef; --muted:#aab6ae; --line:#344038; --accent:#8ed0b0; --soft:#21352b; --warning:#edac8b; }} .card {{ box-shadow:none; }} }}
-    @media (prefers-reduced-motion:reduce) {{ html {{ scroll-behavior:auto; }} .is-interactive .visual-node {{ transition:none; }} .is-playing .visual-node.is-current {{ animation:none; }} }}
-    @media print {{ :root {{ color-scheme:light; }} body {{ background:white; }} .shell {{ width:100%; }} .hero {{ padding:20px 0; }} .card {{ break-inside:avoid; box-shadow:none; }} details,.visual-controls {{ display:none; }} .is-interactive .visual-node {{ opacity:1; filter:none; transform:none; box-shadow:none; }} }}
+    summary {{ display:flex; align-items:center; min-height:44px; cursor:pointer; font-weight:650; }}
+    pre {{ max-height:420px; overflow:auto; padding:18px; border-radius:14px; background:var(--code); color:var(--code-ink); font:13px/1.55 ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace; white-space:pre-wrap; overflow-wrap:anywhere; }}
+    footer {{ padding:8px 0 52px; color:var(--muted); font-size:.88rem; }}
+    @media (max-width:720px) {{ .shell {{ width:min(100% - 24px,1160px); }} .hero {{ padding-top:48px; }} h1 {{ font-size:clamp(2.35rem,12vw,3.5rem); }} .grid {{ grid-template-columns:1fr; gap:12px; padding-top:18px; }} .wide {{ grid-column:auto; }} .card {{ border-radius:20px; padding:22px 20px; }} .visual-heading,.visual-controls {{ align-items:flex-start; flex-direction:column; }} .visual-flow {{ display:grid; overflow:visible; }} .visual-node {{ min-height:112px; }} .visual-node:not(:last-child)::after {{ content:"↓"; left:50%; top:calc(100% + 5px); transform:translateX(-50%); }} .visual-status {{ text-align:left; }} }}
+    @media (prefers-color-scheme:dark) {{ :root {{ --bg:#000; --surface:rgba(28,28,30,.88); --surface-solid:#1c1c1e; --surface-raised:#2c2c2e; --ink:#f5f5f7; --muted:#aeaeb2; --line:rgba(84,84,88,.56); --line-strong:rgba(99,99,102,.72); --accent:#0a84ff; --accent-strong:#64d2ff; --accent-soft:rgba(10,132,255,.16); --code:#111; --code-ink:#f5f5f7; --shadow:0 1px 2px rgba(0,0,0,.25),0 14px 36px rgba(0,0,0,.3); }} .hero {{ background:linear-gradient(180deg,#111,var(--bg)); }} }}
+    @media (prefers-contrast:more) {{ :root {{ --line:rgba(60,60,67,.42); --line-strong:rgba(60,60,67,.72); }} .card,.statement,.map-node,.term,.visual-node {{ border-width:2px; }} .muted,.meta,.source-label,.visual-number,.visual-source {{ color:var(--ink); }} }}
+    @media (prefers-reduced-motion:reduce) {{ html {{ scroll-behavior:auto; }} *,*::before,*::after {{ scroll-behavior:auto!important; transition-duration:.01ms!important; animation-duration:.01ms!important; animation-iteration-count:1!important; }} }}
+    @media print {{ :root {{ color-scheme:light; --bg:#fff; --surface:#fff; --surface-solid:#fff; --ink:#000; --muted:#444; --line:#bbb; --shadow:none; }} body {{ background:white; }} .shell {{ width:100%; }} .hero {{ padding:20px 0; background:white; }} .card {{ break-inside:avoid; box-shadow:none; backdrop-filter:none; }} details,.visual-controls {{ display:none; }} .is-interactive .visual-node {{ opacity:1; transform:none; box-shadow:none; }} }}
   </style>
 </head>
 <body>
+  <a class="skip-link" href="#main-content">Skip to content</a>
   <header class="hero">
-    <div class="shell">
+    <div class="shell hero-copy">
       <div class="eyebrow">RPL · Research paper guide</div>
       <h1>{escape(paper.title)}</h1>
       <div class="meta">
@@ -430,9 +445,13 @@ def render_html(paper: Paper, digest: Digest) -> str:
         <span>{escape(paper.published or "Publication date unknown")}</span>
         <span><a href="{_safe_href(paper.source_url)}">Open original · {escape(paper.paper_id)}</a></span>
       </div>
+      <div class="classification" aria-label="RPL paper classification">
+        <span class="badge badge-primary">{escape(paper_type)}</span>
+        <span class="badge">{escape(type_confidence)}</span>
+      </div>
     </div>
   </header>
-  <main class="shell grid">
+  <main class="shell grid" id="main-content">
     <section class="card" aria-labelledby="problem"><h2 id="problem">The problem</h2>{_html_statement(paper, digest.problem)}</section>
     <section class="card" aria-labelledby="idea"><h2 id="idea">The core idea</h2>{_html_statement(paper, digest.core_idea)}</section>
     <section class="card wide" aria-labelledby="visual"><h2 id="visual">{escape(visual.title)}</h2>{_html_visual(paper, visual)}</section>
