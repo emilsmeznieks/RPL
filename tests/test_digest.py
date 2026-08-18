@@ -3,7 +3,8 @@ import unittest
 
 from rpl.digest import build_digest
 from rpl.parser import parse_arxiv_html
-from rpl.render import knowledge_payload, render_markdown
+from rpl.models import Digest, Paper, Section, SourcedStatement
+from rpl.render import knowledge_payload, render_html, render_markdown
 
 
 FIXTURE = Path(__file__).parent / "fixtures" / "agentic_erp_sample.html"
@@ -37,6 +38,34 @@ class DigestTests(unittest.TestCase):
         self.assertIn("```mermaid", markdown)
         self.assertFalse(payload["provenance"]["generated_claims"])
         self.assertEqual(payload["schema_version"], "0.1")
+
+    def test_html_is_standalone_and_escapes_paper_content(self) -> None:
+        malicious_paper = Paper(
+            paper_id="test-paper",
+            title='<script>alert("title")</script>',
+            authors=['A & B'],
+            published=None,
+            source_url='javascript:alert("link")',
+            abstract='<img src=x onerror=alert("abstract")>',
+            sections=[Section(title="Method <unsafe>", level=2)],
+        )
+        malicious_digest = Digest(
+            problem=SourcedStatement('<script>alert("problem")</script>', "Abstract"),
+            core_idea=None,
+            evidence=[],
+            limitations=[],
+            takeaways=[],
+        )
+
+        html = render_html(malicious_paper, malicious_digest)
+
+        self.assertTrue(html.startswith("<!doctype html>"))
+        self.assertIn("Content-Security-Policy", html)
+        self.assertNotIn("<script", html.lower())
+        self.assertNotIn('href="javascript:', html.lower())
+        self.assertIn("&lt;script&gt;", html)
+        self.assertIn('href="#"', html)
+        self.assertNotIn("https://cdn", html)
 
 
 if __name__ == "__main__":

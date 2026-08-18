@@ -1,7 +1,7 @@
 from pathlib import Path
 import unittest
 
-from rpl.parser import parse_arxiv_html
+from rpl.parser import PaperParseError, parse_arxiv_html
 
 
 FIXTURE = Path(__file__).parent / "fixtures" / "agentic_erp_sample.html"
@@ -27,7 +27,11 @@ class ParserTests(unittest.TestCase):
         self.assertIn("S = <S_inv, S_ord, S_fin>", methodology.equations)
         self.assertIn("guarded orchestration loop", methodology.figures[0])
 
+    def test_rejects_empty_and_unrelated_html(self) -> None:
+        for html in ("", "<html><body><h1>Not a paper</h1></body></html>"):
+            with self.subTest(html=html), self.assertRaises(PaperParseError):
+                parse_arxiv_html(html, "file:///tmp/input.html")
+
 
 if __name__ == "__main__":
     unittest.main()
-

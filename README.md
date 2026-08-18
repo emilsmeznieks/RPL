@@ -6,6 +6,7 @@ The current version is a local CLI. Give it an arXiv URL and it creates:
 
 - `paper.md` — a focused learning card with a visual Mermaid paper map
 - `paper.json` — structured paper content and sourced statements for software or agents
+- `paper.html` — a polished, self-contained learning card that opens in any browser
 
 RPL is deliberately **extractive** today: it selects statements from the paper instead of asking an LLM to invent a summary. Model-powered explanations and paper comparisons come next; MCP comes after the core is reliable.
 
@@ -32,7 +33,8 @@ RPL writes:
 ```text
 rpl-output/2607.17331v1/
 ├── paper.md
-└── paper.json
+├── paper.json
+└── paper.html
 ```
 
 Print one format directly in the terminal:
@@ -40,6 +42,7 @@ Print one format directly in the terminal:
 ```bash
 rpl learn 2607.17331v1 --format markdown --stdout
 rpl learn 2607.17331v1 --format json --stdout
+rpl learn 2607.17331v1 --format html --output ./my-library
 ```
 
 Local arXiv HTML files also work:
@@ -58,6 +61,7 @@ flowchart LR
   D --> E["Extract sourced problem, idea, evidence, limitations"]
   E --> F["Human Markdown"]
   E --> G["Agent-ready JSON"]
+  E --> H["Standalone HTML"]
 ```
 
 Every selected statement includes its source section. The JSON also records the extraction method and whether generated claims are present.
@@ -87,17 +91,18 @@ Every selected statement includes its source section. The JSON also records the 
 - arXiv HTML URLs, arXiv IDs, and local HTML files
 - Metadata, abstract, section, equation, and figure-caption extraction
 - Conservative evidence and limitation selection
-- Markdown and JSON output
+- Markdown, JSON, and standalone HTML output
 - No API key and no required model provider
 
 The deterministic selector is intentionally simple. It can miss important ideas, and its output must not be treated as an expert review.
 
 ## Roadmap
 
-1. Add grounded model-powered explanations with citations.
-2. Compare related papers and show meaningful differences.
-3. Create reusable local research libraries.
-4. Expose the stable core through MCP for Claude, ChatGPT, Codex, and other agents.
+1. Add paper-specific animated visual explanations to the HTML output.
+2. Add grounded model-powered explanations with citations.
+3. Compare related papers and show meaningful differences.
+4. Create reusable local research libraries.
+5. Expose the stable core through MCP for Claude, ChatGPT, Codex, and other agents.
 
 ## Development
 

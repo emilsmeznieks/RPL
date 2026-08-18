@@ -1,20 +1,31 @@
 from __future__ import annotations
 
 import argparse
+import math
 import re
 import sys
 from pathlib import Path
 
 from . import __version__
 from .digest import build_digest
-from .parser import parse_arxiv_html
-from .render import render_json, render_markdown
+from .parser import PaperParseError, parse_arxiv_html
+from .render import render_html, render_json, render_markdown
 from .source import SourceError, read_source
 
 
 def safe_name(value: str) -> str:
     cleaned = re.sub(r"[^A-Za-z0-9._-]+", "-", value).strip("-.")
     return cleaned or "paper"
+
+
+def positive_float(value: str) -> float:
+    try:
+        parsed = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be a number") from exc
+    if not math.isfinite(parsed) or parsed <= 0:
+        raise argparse.ArgumentTypeError("must be a finite number greater than zero")
+    return parsed
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -35,12 +46,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     learn.add_argument(
         "--format",
-        choices=("all", "markdown", "json"),
+        choices=("all", "html", "markdown", "json"),
         default="all",
         help="output format (default: all)",
     )
     learn.add_argument("--stdout", action="store_true", help="print the selected output instead of writing files")
-    learn.add_argument("--timeout", type=float, default=30.0, help="download timeout in seconds")
+    learn.add_argument("--timeout", type=positive_float, default=30.0, help="download timeout in seconds")
     return parser
 
 
@@ -48,36 +59,49 @@ def learn(args: argparse.Namespace) -> int:
     try:
         html, source_url = read_source(args.source, timeout=args.timeout)
         paper = parse_arxiv_html(html, source_url)
-    except (SourceError, OSError, UnicodeError) as exc:
+    except (PaperParseError, SourceError, OSError, UnicodeError) as exc:
         print(f"rpl: {exc}", file=sys.stderr)
         return 1
 
     digest = build_digest(paper)
     markdown = render_markdown(paper, digest)
     json_output = render_json(paper, digest)
+    html_output = render_html(paper, digest)
 
     if args.stdout:
         if args.format == "json":
             print(json_output, end="")
+        elif args.format == "html":
+            print(html_output, end="")
         elif args.format == "markdown":
             print(markdown, end="")
         else:
             print(markdown, end="")
             print("\n<!-- RPL JSON -->\n")
             print(json_output, end="")
+            print("\n<!-- RPL HTML -->\n")
+            print(html_output, end="")
         return 0
 
     destination = Path(args.output) / safe_name(paper.paper_id)
-    destination.mkdir(parents=True, exist_ok=True)
     written: list[Path] = []
-    if args.format in ("all", "markdown"):
-        path = destination / "paper.md"
-        path.write_text(markdown, encoding="utf-8")
-        written.append(path)
-    if args.format in ("all", "json"):
-        path = destination / "paper.json"
-        path.write_text(json_output, encoding="utf-8")
-        written.append(path)
+    try:
+        destination.mkdir(parents=True, exist_ok=True)
+        if args.format in ("all", "markdown"):
+            path = destination / "paper.md"
+            path.write_text(markdown, encoding="utf-8")
+            written.append(path)
+        if args.format in ("all", "json"):
+            path = destination / "paper.json"
+            path.write_text(json_output, encoding="utf-8")
+            written.append(path)
+        if args.format in ("all", "html"):
+            path = destination / "paper.html"
+            path.write_text(html_output, encoding="utf-8")
+            written.append(path)
+    except OSError as exc:
+        print(f"rpl: Could not write output: {exc}", file=sys.stderr)
+        return 1
 
     print(f"RPL extracted {paper.title}")
     for path in written:
@@ -96,4 +120,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

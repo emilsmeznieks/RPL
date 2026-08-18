@@ -12,6 +12,10 @@ WHITESPACE = re.compile(r"\s+")
 NUMBER_PREFIX = re.compile(r"^\s*(?:\d+(?:\.\d+)*|[IVX]+)\s*[.:]?\s*", re.I)
 
 
+class PaperParseError(ValueError):
+    """Raised when HTML does not contain enough paper structure to trust."""
+
+
 def clean_text(parts: list[str] | str) -> str:
     value = " ".join(parts) if isinstance(parts, list) else parts
     value = unescape(value).replace("\u200b", "")
@@ -194,7 +198,22 @@ class ArxivHTMLParser(HTMLParser):
 
 
 def parse_arxiv_html(html: str, source_url: str) -> Paper:
+    if not html.strip():
+        raise PaperParseError("The paper source is empty.")
     parser = ArxivHTMLParser()
     parser.feed(html)
     parser.close()
-    return parser.paper(source_url)
+    paper = parser.paper(source_url)
+    missing: list[str] = []
+    if paper.title == "Untitled paper":
+        missing.append("title")
+    if not paper.abstract:
+        missing.append("abstract")
+    if not paper.sections:
+        missing.append("sections")
+    if missing:
+        fields = ", ".join(missing)
+        raise PaperParseError(
+            f"The source does not look like a supported arXiv HTML paper (missing: {fields})."
+        )
+    return paper
