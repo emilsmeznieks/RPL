@@ -35,6 +35,7 @@ class LanguageTests(unittest.TestCase):
                         "The large-language-model (LLM) agent chooses a tool. "
                         "An undefined short form (BAD) is ignored."
                     ],
+                    paragraph_anchors=["S2.p1"],
                 )
             ],
         )
@@ -45,7 +46,7 @@ class LanguageTests(unittest.TestCase):
             [(term.short_form, term.term) for term in terms],
             [("ERP", "Enterprise Resource Planning"), ("LLM", "large-language-model")],
         )
-        self.assertEqual(terms[1].source_anchor, "S2")
+        self.assertEqual(terms[1].source_anchor, "S2.p1")
 
 
 if __name__ == "__main__":

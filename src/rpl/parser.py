@@ -186,6 +186,7 @@ class ArxivHTMLParser(HTMLParser):
                 self.abstract_parts.append(text)
             elif self.sections:
                 self.sections[-1].paragraphs.append(text)
+                self.sections[-1].paragraph_anchors.append(element_id or None)
             return
 
         if tag == "figcaption" and self.sections:

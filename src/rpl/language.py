@@ -50,9 +50,15 @@ def build_glossary(paper: Paper, limit: int = 8) -> list[GlossaryTerm]:
 
     sources: list[tuple[str, str, str | None]] = [(paper.abstract, "Abstract", None)]
     for section in paper.sections:
+        for index, paragraph in enumerate(section.paragraphs):
+            anchor = (
+                section.paragraph_anchors[index]
+                if index < len(section.paragraph_anchors)
+                else section.anchor
+            )
+            sources.append((paragraph, section.title, anchor))
         sources.extend(
-            (text, section.title, section.anchor)
-            for text in section.paragraphs + section.figures
+            (figure, section.title, section.anchor) for figure in section.figures
         )
 
     terms: list[GlossaryTerm] = []

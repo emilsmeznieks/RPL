@@ -84,7 +84,7 @@ rpl learn ./paper.html
 - Paper sections, equations, and figure captions
 - A visual model of an architecture or process when the paper states one clearly
 
-Every selected statement includes its source section. Every visual node also keeps the exact text that supports it.
+Every selected statement includes its source section and exact paragraph when arXiv provides one. Every visual node also keeps the exact text that supports it.
 
 If RPL cannot identify an architecture or process safely, it shows the paper structure instead and marks the visual as low confidence.
 
@@ -96,7 +96,7 @@ The HTML visual includes Play, Pause, Previous, and Next controls. Motion starts
 - Results are labeled as results reported by the paper, not as proven facts.
 - Reader views remove citation-number clutter but do not replace the paper's words.
 - Technical terms are explained only when the paper defines them.
-- Source sections link to the matching place in arXiv when an exact link is available.
+- Sources link to the exact paragraph in arXiv when available, otherwise to the section.
 
 RPL does not independently verify the paper's results. Always check important claims in the original paper.
 
@@ -108,11 +108,12 @@ Example:
 
 ```json
 {
-  "schema_version": "0.3",
+  "schema_version": "0.4",
   "digest": {
     "problem": {
       "text": "A statement selected from the paper...",
-      "section": "Abstract"
+      "section": "Abstract",
+      "source_anchor": null
     },
     "evidence": [],
     "limitations": []
@@ -150,7 +151,7 @@ Always check important claims in the original paper.
 
 ## Current status
 
-RPL 0.4 supports:
+RPL 0.5 supports:
 
 - arXiv HTML URLs and IDs
 - Saved arXiv HTML files
@@ -160,7 +161,7 @@ RPL 0.4 supports:
 - Safe fallback to a paper-section visual
 - Play, pause, and step controls for visual explanations
 - Paper-defined terminology
-- Direct links to matching arXiv sections when available
+- Direct links to matching arXiv paragraphs or sections
 - Cleaner reader text without citation-number clutter
 
 Not yet included:

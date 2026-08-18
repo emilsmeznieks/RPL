@@ -94,10 +94,14 @@ def _markdown_source(
     return f"[{section}]({href})" if href else section
 
 
+def _statement_anchor(item: SourcedStatement) -> str | None:
+    return item.source_anchor or item.section_anchor
+
+
 def _markdown_statement(paper: Paper, item: SourcedStatement | None) -> str:
     if item is None:
         return "RPL could not identify this clearly from the paper."
-    source = _markdown_source(paper.source_url, item.section, item.section_anchor)
+    source = _markdown_source(paper.source_url, item.section, _statement_anchor(item))
     return f"{reading_text(item.text)}\n\n_Source: {source}_"
 
 
@@ -106,7 +110,9 @@ def _markdown_list(paper: Paper, items: list[SourcedStatement]) -> str:
         return "- RPL could not identify this clearly from the paper."
     lines = []
     for item in items:
-        source = _markdown_source(paper.source_url, item.section, item.section_anchor)
+        source = _markdown_source(
+            paper.source_url, item.section, _statement_anchor(item)
+        )
         lines.append(f"- {reading_text(item.text)} _(Source: {source})_")
     return "\n".join(lines)
 
@@ -193,7 +199,7 @@ def knowledge_payload(paper: Paper, digest: Digest) -> dict[str, Any]:
     visual = build_visual_spec(paper)
     glossary = build_glossary(paper)
     return {
-        "schema_version": "0.3",
+        "schema_version": "0.4",
         "paper": paper.to_dict(),
         "digest": digest.to_dict(),
         "visual": visual.to_dict(),
@@ -230,9 +236,12 @@ def _html_source(
 def _html_statement(paper: Paper, item: SourcedStatement | None) -> str:
     if item is None:
         return '<p class="muted">RPL could not identify this clearly from the paper.</p>'
+    source = _html_source(
+        paper.source_url, item.section, _statement_anchor(item), "source-label"
+    )
     return (
         f"<p>{escape(reading_text(item.text))}</p>"
-        f"{_html_source(paper.source_url, item.section, item.section_anchor, 'source-label')}"
+        f"{source}"
     )
 
 
@@ -241,10 +250,13 @@ def _html_list(paper: Paper, items: list[SourcedStatement]) -> str:
         return '<p class="muted">RPL could not identify this clearly from the paper.</p>'
     cards = []
     for item in items:
+        source = _html_source(
+            paper.source_url, item.section, _statement_anchor(item), "source-label"
+        )
         cards.append(
             '<li class="statement">'
             f"<p>{escape(reading_text(item.text))}</p>"
-            f"{_html_source(paper.source_url, item.section, item.section_anchor, 'source-label')}"
+            f"{source}"
             "</li>"
         )
     return f'<ul class="statement-list">{"".join(cards)}</ul>'

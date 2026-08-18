@@ -134,7 +134,12 @@ def _architecture_spec(paper: Paper) -> VisualSpec | None:
 
 def _process_spec(paper: Paper) -> VisualSpec | None:
     for section in _method_sections(paper):
-        for paragraph in section.paragraphs:
+        for paragraph_index, paragraph in enumerate(section.paragraphs):
+            source_anchor = (
+                section.paragraph_anchors[paragraph_index]
+                if paragraph_index < len(section.paragraph_anchors)
+                else section.anchor
+            )
             for match in SEQUENCE_PATTERN.finditer(paragraph):
                 items = _sequence_items(match.group(1))
                 if not items:
@@ -146,7 +151,7 @@ def _process_spec(paper: Paper) -> VisualSpec | None:
                         kind="step",
                         source_section=section.title,
                         source_text=paragraph,
-                        source_anchor=section.anchor,
+                        source_anchor=source_anchor,
                     )
                     for index, item in enumerate(items, start=1)
                 ]

@@ -70,12 +70,13 @@ class DigestTests(unittest.TestCase):
         self.assertIn("## The core idea", markdown)
         self.assertIn("```mermaid", markdown)
         self.assertFalse(payload["provenance"]["generated_claims"])
-        self.assertEqual(payload["schema_version"], "0.3")
+        self.assertEqual(payload["schema_version"], "0.4")
         self.assertEqual(payload["visual"]["visual_type"], "process")
         self.assertEqual(payload["visual"]["nodes"][0]["label"], "Plan")
-        self.assertEqual(payload["visual"]["nodes"][0]["source_anchor"], "S2")
+        self.assertEqual(payload["visual"]["nodes"][0]["source_anchor"], "S2.p1")
         self.assertIn("Results reported in the paper", markdown)
-        self.assertIn("https://arxiv.org/html/2607.17331v1#S3", markdown)
+        self.assertIn("https://arxiv.org/html/2607.17331v1#S3.p1", markdown)
+        self.assertEqual(payload["digest"]["evidence"][0]["source_anchor"], "S3.p1")
 
     def test_html_is_standalone_and_escapes_paper_content(self) -> None:
         malicious_paper = Paper(
@@ -122,9 +123,31 @@ class DigestTests(unittest.TestCase):
         self.assertIn(".visual-controls[hidden]", html)
         self.assertIn("prefers-reduced-motion:reduce", html)
         self.assertIn(
-            'href="https://arxiv.org/html/2607.17331v1#S3"',
+            'href="https://arxiv.org/html/2607.17331v1#S3.p1"',
             html,
         )
+
+    def test_older_section_data_falls_back_to_the_section_anchor(self) -> None:
+        paper = Paper(
+            paper_id="paper",
+            title="Compatible input",
+            authors=[],
+            published=None,
+            source_url="https://arxiv.org/html/2607.10000v1",
+            abstract="This paper presents a useful approach to a difficult problem.",
+            sections=[
+                Section(
+                    "Results",
+                    2,
+                    anchor="S3",
+                    paragraphs=["The method achieved 90% accuracy across 100 trials."],
+                )
+            ],
+        )
+
+        evidence = build_digest(paper).evidence
+
+        self.assertEqual(evidence[0].source_anchor, "S3")
 
     def test_generated_reader_copy_is_neutral(self) -> None:
         html = render_html(self.paper, self.digest).lower()

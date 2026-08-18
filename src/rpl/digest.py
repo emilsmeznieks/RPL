@@ -88,22 +88,26 @@ def sentences(text: str) -> list[str]:
 
 
 def _statement(
-    text: str, section: str, section_anchor: str | None = None
+    text: str,
+    section: str,
+    section_anchor: str | None = None,
+    source_anchor: str | None = None,
 ) -> SourcedStatement:
     return SourcedStatement(
         text=text,
         section=section,
         section_anchor=section_anchor,
+        source_anchor=source_anchor,
     )
 
 
 def _first_matching(
-    items: Iterable[tuple[str, str, str | None]], signals: tuple[str, ...]
+    items: Iterable[tuple[str, str, str | None, str | None]], signals: tuple[str, ...]
 ) -> SourcedStatement | None:
-    for text, section, section_anchor in items:
+    for text, section, section_anchor, source_anchor in items:
         lowered = text.lower()
         if any(signal in lowered for signal in signals):
-            return _statement(text, section, section_anchor)
+            return _statement(text, section, section_anchor, source_anchor)
     return None
 
 
@@ -131,12 +135,20 @@ def _ranked_unique(
 def build_digest(paper: Paper) -> Digest:
     """Build a conservative extractive digest without inventing new claims."""
 
-    abstract_sentences = [(text, "Abstract", None) for text in sentences(paper.abstract)]
-    all_section_sentences: list[tuple[str, str, str | None]] = []
+    abstract_sentences = [
+        (text, "Abstract", None, None) for text in sentences(paper.abstract)
+    ]
+    all_section_sentences: list[tuple[str, str, str | None, str | None]] = []
     for section in paper.sections:
-        for paragraph in section.paragraphs:
+        for index, paragraph in enumerate(section.paragraphs):
+            source_anchor = (
+                section.paragraph_anchors[index]
+                if index < len(section.paragraph_anchors)
+                else section.anchor
+            )
             all_section_sentences.extend(
-                (text, section.title, section.anchor) for text in sentences(paragraph)
+                (text, section.title, section.anchor, source_anchor)
+                for text in sentences(paragraph)
             )
 
     problem = _first_matching(abstract_sentences, PROBLEM_SIGNALS)
@@ -148,7 +160,7 @@ def build_digest(paper: Paper) -> Digest:
         core_idea = _statement(*abstract_sentences[1])
 
     evidence_candidates: list[tuple[int, int, SourcedStatement]] = []
-    for order, (text, section, section_anchor) in enumerate(
+    for order, (text, section, section_anchor, source_anchor) in enumerate(
         abstract_sentences + all_section_sentences
     ):
         lowered = text.lower()
@@ -158,13 +170,23 @@ def build_digest(paper: Paper) -> Digest:
         general_signal = any(token in lowered for token in EVIDENCE_SIGNALS)
         has_number = bool(NUMBER_SIGNAL.search(text))
         if has_number and (result_section or outcome):
-            score = (5 if result_section else 0) + (4 if outcome else 0) + (1 if general_signal else 0)
+            score = (
+                (5 if result_section else 0)
+                + (4 if outcome else 0)
+                + (1 if general_signal else 0)
+            )
             evidence_candidates.append(
-                (score, order, _statement(text, section, section_anchor))
+                (
+                    score,
+                    order,
+                    _statement(text, section, section_anchor, source_anchor),
+                )
             )
 
     limitation_candidates: list[tuple[int, int, SourcedStatement]] = []
-    for order, (text, section, section_anchor) in enumerate(all_section_sentences):
+    for order, (text, section, section_anchor, source_anchor) in enumerate(
+        all_section_sentences
+    ):
         lowered = text.lower()
         section_lower = section.lower()
         signal_count = sum(signal in lowered for signal in LIMITATION_SIGNALS)
@@ -176,24 +198,36 @@ def build_digest(paper: Paper) -> Digest:
         if signal_count == 1 and is_outcome and not limitation_section:
             continue
         if signal_count and (limitation_section or discussion_section or signal_count >= 2):
-            score = (7 if limitation_section else 0) + (3 if discussion_section else 0) + signal_count
+            score = (
+                (7 if limitation_section else 0)
+                + (3 if discussion_section else 0)
+                + signal_count
+            )
             limitation_candidates.append(
-                (score, order, _statement(text, section, section_anchor))
+                (
+                    score,
+                    order,
+                    _statement(text, section, section_anchor, source_anchor),
+                )
             )
 
     conclusion_candidates: list[SourcedStatement] = []
     discussion_candidates: list[SourcedStatement] = []
-    for text, section, section_anchor in all_section_sentences:
+    for text, section, section_anchor, source_anchor in all_section_sentences:
         section_lower = section.lower()
         text_lower = text.lower()
         if any(signal in text_lower for signal in LOW_INFORMATION_SIGNALS):
             continue
         if "conclusion" in section_lower:
-            conclusion_candidates.append(_statement(text, section, section_anchor))
+            conclusion_candidates.append(
+                _statement(text, section, section_anchor, source_anchor)
+            )
         elif "discussion" in section_lower and not any(
             signal in text_lower for signal in LIMITATION_SIGNALS
         ):
-            discussion_candidates.append(_statement(text, section, section_anchor))
+            discussion_candidates.append(
+                _statement(text, section, section_anchor, source_anchor)
+            )
 
     return Digest(
         problem=problem,

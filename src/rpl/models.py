@@ -14,6 +14,7 @@ class Section:
     paragraphs: list[str] = field(default_factory=list)
     equations: list[str] = field(default_factory=list)
     figures: list[str] = field(default_factory=list)
+    paragraph_anchors: list[str | None] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -43,6 +44,7 @@ class SourcedStatement:
     text: str
     section: str
     section_anchor: str | None = None
+    source_anchor: str | None = None
 
 
 @dataclass(slots=True)

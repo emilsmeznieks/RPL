@@ -25,6 +25,7 @@ class ParserTests(unittest.TestCase):
         methodology = self.paper.sections[1]
         self.assertEqual(methodology.level, 2)
         self.assertEqual(methodology.anchor, "S2")
+        self.assertEqual(methodology.paragraph_anchors, ["S2.p1", "S2.p2"])
         self.assertIn("S = <S_inv, S_ord, S_fin>", methodology.equations)
         self.assertIn("guarded orchestration loop", methodology.figures[0])
 
@@ -43,6 +44,7 @@ class ParserTests(unittest.TestCase):
         paper = parse_arxiv_html(html, "https://arxiv.org/html/2607.10000v1")
 
         self.assertEqual(paper.sections[0].anchor, "S1")
+        self.assertEqual(paper.sections[0].paragraph_anchors, ["S1"])
 
 
 if __name__ == "__main__":

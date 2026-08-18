@@ -39,7 +39,7 @@ class VisualSpecTests(unittest.TestCase):
         <meta name="citation_title" content="A process paper">
         <div class="ltx_abstract"><p>We propose a useful process for a difficult research problem.</p></div>
         <h2>Method</h2>
-        <p>Requests pass through plan, execute, reflect, and respond stages.</p>
+        <p id="S2.p1">Requests pass through plan, execute, reflect, and respond stages.</p>
         """
         paper = parse_arxiv_html(html, "https://arxiv.org/html/2607.10000v1")
 
@@ -48,6 +48,7 @@ class VisualSpecTests(unittest.TestCase):
         self.assertEqual(visual.visual_type, "process")
         self.assertEqual([node.label for node in visual.nodes], ["Plan", "Execute", "Reflect", "Respond"])
         self.assertTrue(all(node.source_section == "Method" for node in visual.nodes))
+        self.assertTrue(all(node.source_anchor == "S2.p1" for node in visual.nodes))
         self.assertEqual([(edge.source, edge.target) for edge in visual.edges], [
             ("step-1", "step-2"),
             ("step-2", "step-3"),

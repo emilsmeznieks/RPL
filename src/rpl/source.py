@@ -47,7 +47,7 @@ def read_source(value: str, *, timeout: float = 30.0) -> tuple[str, str]:
     request = Request(
         url,
         headers={
-            "User-Agent": "RPL/0.4 (+https://github.com/emilsmeznieks/RPL)",
+            "User-Agent": "RPL/0.5 (+https://github.com/emilsmeznieks/RPL)",
             "Accept": "text/html,application/xhtml+xml",
         },
     )
