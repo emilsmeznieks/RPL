@@ -10,6 +10,9 @@ from .source import arxiv_id
 
 WHITESPACE = re.compile(r"\s+")
 NUMBER_PREFIX = re.compile(r"^\s*(?:\d+(?:\.\d+)*|[IVX]+)\s*[.:]?\s*", re.I)
+AUTHOR_FOOTNOTE = re.compile(
+    r"(?:\s+\d+)*(?:\s*footnotemark(?::\s*\d+)?)?\s*$", re.I
+)
 
 
 class PaperParseError(ValueError):
@@ -23,6 +26,12 @@ def clean_text(parts: list[str] | str) -> str:
     value = re.sub(r"\s+([,.;:!?%\)])", r"\1", value)
     value = re.sub(r"([\(])\s+", r"\1", value)
     return value
+
+
+def clean_author(value: str) -> str:
+    """Remove arXiv affiliation markers accidentally exposed as author text."""
+
+    return AUTHOR_FOOTNOTE.sub("", clean_text(value)).strip(" ,")
 
 
 class ArxivHTMLParser(HTMLParser):
@@ -204,10 +213,17 @@ class ArxivHTMLParser(HTMLParser):
         for value in self.metadata.get("citation_keywords", []):
             keywords.extend(item.strip() for item in re.split(r"[,;]", value) if item.strip())
 
+        raw_authors = self.metadata.get("citation_author", []) or self.authors
+        authors = []
+        for value in raw_authors:
+            author = clean_author(value)
+            if author and author not in authors:
+                authors.append(author)
+
         return Paper(
             paper_id=identifier,
             title=title,
-            authors=self.metadata.get("citation_author", []) or self.authors,
+            authors=authors,
             published=first("citation_date") or (infobox_date.group(0) if infobox_date else None),
             source_url=source_url,
             abstract=clean_text(self.abstract_parts),

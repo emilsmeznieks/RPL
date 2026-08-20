@@ -129,19 +129,21 @@ rpl learn ./paper.html
 - Limitations
 - Key takeaways
 - Paper sections, equations, and figure captions in the structured JSON
-- A visual model of an architecture or process when the paper states one clearly
+- A sourced visual of an encoder–decoder model, another supported architecture, or a process when the paper states one clearly
 
 Every selected statement includes its source section and exact paragraph when arXiv provides one. Every visual node also keeps the exact text that supports it.
 
-If RPL cannot identify an architecture or process safely, it shows the paper structure instead and marks the visual as low confidence.
+If RPL cannot identify an architecture or process safely, it shows a simple paper outline instead.
 
-The HTML visual includes Play, Pause, Previous, and Next controls. Automatic playback starts only when you select Play. Reduced-motion settings remove animated transitions, but the step controls still work.
+The reader layout adapts to the content. Unsupported sections are omitted, short sections use compact cards, and longer sections use the full reading width.
 
 ## Clarity and grounding rules
 
 - RPL does not use an AI model to rewrite or invent paper claims.
-- RPL adds labels, paper classifications, confidence levels, and visual structure. These are RPL-created structure, not paper quotations.
+- RPL adds labels and visual structure. These are RPL-created structure, not paper quotations.
 - Results are labeled as results reported by the paper, not as proven facts.
+- Result candidates that look like background, dataset setup, or inference configuration are removed from the reader output.
+- Empty sections are omitted instead of being displayed as placeholder cards.
 - Reader views remove citation-number clutter but do not replace the paper's words.
 - Acronym expansions are included only when the paper states them directly.
 - Sources link to the exact paragraph in arXiv when available, otherwise to the section.
@@ -159,6 +161,7 @@ The top-level JSON fields are:
 - `digest` — selected problem, core idea, results, limitations, and takeaways
 - `visual` — sourced nodes and connections for the HTML visual
 - `glossary` — acronym expansions stated by the paper
+- `output_quality` — the sections shown or omitted, the reason for each decision, and any filtered result candidates
 - `comparison` — related-paper data or an explicit `not-generated` status
 - `provenance` — source and extraction information
 
@@ -180,9 +183,10 @@ Compatible AI clients can use this data through RPL's local MCP server. Automati
 flowchart LR
   A["arXiv paper"] --> B["Extract paper content"]
   B --> C["Select key statements with sources"]
-  C --> D["HTML for reading"]
-  C --> E["Markdown for notes"]
-  C --> F["JSON for agents"]
+  C --> D["Apply output quality rules"]
+  D --> E["Adaptive HTML for reading"]
+  D --> F["Markdown for notes"]
+  D --> G["JSON for agents"]
 ```
 
 RPL currently copies relevant statements from the paper instead of generating a new summary with an AI model. This reduces invented claims, but it can still miss important information or select an unhelpful sentence.
@@ -194,21 +198,21 @@ RPL currently copies relevant statements from the paper instead of generating a 
 - The selection rules are designed primarily for English-language papers.
 - RPL can miss important content or select weak, repeated, or conflicting statements. It does not reconcile contradictions in a paper.
 - Equations and figure captions are preserved in `paper.json`; the short HTML and Markdown views do not show all of them.
-- Visual extraction is limited to clear process sequences and specific architecture-caption patterns. Other papers receive a low-confidence section outline.
+- Visual extraction supports explicit encoder–decoder descriptions, clear process sequences, and specific architecture-caption patterns. Other papers receive a simple section outline.
 - Related-paper discovery and comparison are not implemented yet.
 
 ## Current status
 
-RPL 0.7 supports:
+RPL 0.8 supports:
 
 - Modern and legacy arXiv URLs and IDs
 - Saved arXiv HTML files
 - Standalone HTML, Markdown, and JSON output
-- System-native HTML styling with light, dark, and increased-contrast modes
+- System-native HTML styling on a white reading surface with increased-contrast support
+- Encoder–decoder architecture extraction from the paper's model and stack descriptions
 - Architecture extraction from figure captions
 - Process extraction from clear step sequences
 - Safe fallback to a paper-section visual
-- Play, pause, and step controls for visual explanations
 - Paper-defined acronym expansions
 - Direct links to matching arXiv paragraphs or sections
 - One selected statement per exact source paragraph in each output section
@@ -217,6 +221,11 @@ RPL 0.7 supports:
 - A local MCP server for compatible AI clients
 - One reusable analysis service shared by the CLI and MCP server
 - Cleaner reader text without citation-number clutter
+- Adaptive section widths based on content length and item count
+- Automatic omission of unsupported reader sections
+- A structured output-quality report in JSON and MCP responses
+- High-precision filtering of background and setup statements from reported results
+- Ranked selection of explicit constraints and research gaps for the problem section
 
 Not yet included:
 

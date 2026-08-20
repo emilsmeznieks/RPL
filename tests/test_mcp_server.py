@@ -56,6 +56,7 @@ class LocalMcpServerTests(unittest.TestCase):
                 )
 
             self.assertEqual(structured["status"], "completed")
+            self.assertEqual(structured["output_quality"]["status"], "ready")
             html_artifact = next(
                 item for item in structured["artifacts"] if item["format"] == "html"
             )

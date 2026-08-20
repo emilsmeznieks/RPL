@@ -48,6 +48,19 @@ class LanguageTests(unittest.TestCase):
         )
         self.assertEqual(terms[1].source_anchor, "S2.p1")
 
+    def test_ignores_publication_names_as_glossary_terms(self) -> None:
+        paper = Paper(
+            paper_id="paper",
+            title="Publication abbreviation",
+            authors=[],
+            published=None,
+            source_url="https://arxiv.org/html/1706.03762",
+            abstract="Results use the Wall Street Journal (WSJ) dataset.",
+            sections=[Section("Introduction", 2)],
+        )
+
+        self.assertEqual(build_glossary(paper), [])
+
 
 if __name__ == "__main__":
     unittest.main()

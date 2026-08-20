@@ -46,6 +46,18 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(paper.sections[0].anchor, "S1")
         self.assertEqual(paper.sections[0].paragraph_anchors, ["S1"])
 
+    def test_removes_arxiv_footnote_markup_from_author_names(self) -> None:
+        html = """
+        <meta name="citation_title" content="Author cleanup">
+        <meta name="citation_author" content="Noam Shazeer 1 1 footnotemark: 1">
+        <div class="ltx_abstract"><p>A complete abstract for this paper.</p></div>
+        <section><h2>Introduction</h2><p>A section paragraph.</p></section>
+        """
+
+        paper = parse_arxiv_html(html, "https://arxiv.org/html/1706.03762")
+
+        self.assertEqual(paper.authors, ["Noam Shazeer"])
+
 
 if __name__ == "__main__":
     unittest.main()

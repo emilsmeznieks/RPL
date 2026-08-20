@@ -6,10 +6,13 @@ from pathlib import Path
 
 from .comparison import empty_comparison_set
 from .digest import build_digest
-from .models import ComparisonSet, Digest, Paper
+from .language import build_glossary
+from .models import ComparisonSet, Digest, OutputQuality, Paper
 from .parser import parse_arxiv_html
+from .quality import apply_output_quality_rules
 from .render import render_html, render_json, render_markdown
 from .source import read_source
+from .visual import build_visual_spec
 
 
 OUTPUT_FILES = {
@@ -25,6 +28,7 @@ class AnalysisResult:
 
     paper: Paper
     digest: Digest
+    output_quality: OutputQuality
     comparison: ComparisonSet
     markdown: str
     json: str
@@ -44,14 +48,21 @@ def analyze_source(source: str, *, timeout: float = 30.0) -> AnalysisResult:
     source_html, source_url = read_source(source, timeout=timeout)
     paper = parse_arxiv_html(source_html, source_url)
     digest = build_digest(paper)
+    digest, output_quality = apply_output_quality_rules(
+        paper,
+        digest,
+        build_visual_spec(paper),
+        build_glossary(paper),
+    )
     comparison = empty_comparison_set(paper)
     return AnalysisResult(
         paper=paper,
         digest=digest,
+        output_quality=output_quality,
         comparison=comparison,
-        markdown=render_markdown(paper, digest),
-        json=render_json(paper, digest, comparison),
-        html=render_html(paper, digest, comparison),
+        markdown=render_markdown(paper, digest, output_quality),
+        json=render_json(paper, digest, comparison, output_quality),
+        html=render_html(paper, digest, comparison, output_quality),
     )
 
 
