@@ -5,7 +5,7 @@ import unittest
 from rpl.digest import build_digest
 from rpl.parser import parse_arxiv_html
 from rpl.models import Digest, Paper, Section, SourcedStatement
-from rpl.render import INTERACTION_SCRIPT, knowledge_payload, render_html, render_markdown
+from rpl.render import knowledge_payload, render_html, render_markdown
 
 
 FIXTURE = Path(__file__).parent / "fixtures" / "agentic_erp_sample.html"
@@ -27,6 +27,51 @@ class DigestTests(unittest.TestCase):
         self.assertIn("role-aligned", self.digest.core_idea.text)
         self.assertEqual(self.digest.paper_type, "empirical")
         self.assertEqual(self.digest.paper_type_confidence, "moderate")
+
+    def test_problem_selection_prefers_the_explicit_constraint_over_background(self) -> None:
+        paper = Paper(
+            paper_id="1706.03762",
+            title="Attention Is All You Need",
+            authors=[],
+            published="2017",
+            source_url="https://arxiv.org/html/1706.03762",
+            abstract=(
+                "The dominant sequence transduction models use recurrent or convolutional networks. "
+                "We propose the Transformer based solely on attention mechanisms."
+            ),
+            sections=[
+                Section(
+                    "Introduction",
+                    2,
+                    anchor="S1",
+                    paragraphs=[
+                        "Recurrent neural networks are established approaches for sequence modeling.",
+                        "This inherently sequential nature precludes parallelization within training examples, which becomes critical at longer sequence lengths as memory constraints limit batching.",
+                        "Recent work improved efficiency, but the fundamental constraint of sequential computation remains.",
+                    ],
+                    paragraph_anchors=["S1.p1", "S1.p2", "S1.p3"],
+                )
+            ],
+        )
+
+        digest = build_digest(paper)
+
+        self.assertIsNotNone(digest.problem)
+        self.assertIn("precludes parallelization", digest.problem.text)
+        self.assertEqual(digest.problem.source_anchor, "S1.p2")
+
+    def test_problem_selection_does_not_use_background_as_a_fallback(self) -> None:
+        paper = Paper(
+            paper_id="paper",
+            title="Background only",
+            authors=[],
+            published=None,
+            source_url="https://arxiv.org/html/2607.10000v1",
+            abstract="Existing systems have been widely used across many applications.",
+            sections=[Section("Introduction", 2)],
+        )
+
+        self.assertIsNone(build_digest(paper).problem)
 
     def test_keeps_evidence_and_limitations_sourced(self) -> None:
         self.assertGreaterEqual(len(self.digest.evidence), 2)
@@ -101,7 +146,8 @@ class DigestTests(unittest.TestCase):
         self.assertIn("## The core idea", markdown)
         self.assertIn("```mermaid", markdown)
         self.assertFalse(payload["provenance"]["generated_claims"])
-        self.assertEqual(payload["schema_version"], "0.6")
+        self.assertEqual(payload["schema_version"], "0.8")
+        self.assertEqual(payload["output_quality"]["status"], "ready")
         self.assertEqual(payload["comparison"]["schema_version"], "0.1")
         self.assertEqual(payload["comparison"]["status"], "not-generated")
         self.assertEqual(
@@ -202,8 +248,7 @@ class DigestTests(unittest.TestCase):
 
         self.assertTrue(html.startswith("<!doctype html>"))
         self.assertIn("Content-Security-Policy", html)
-        self.assertEqual(html.count("<script>"), 1)
-        self.assertIn(f"<script>{INTERACTION_SCRIPT}</script>", html)
+        self.assertEqual(html.count("<script>"), 0)
         self.assertNotIn("<script>alert", html.lower())
         self.assertNotIn('href="javascript:', html.lower())
         self.assertIn("&lt;script&gt;", html)
@@ -211,21 +256,22 @@ class DigestTests(unittest.TestCase):
         self.assertIn('href="#"', html)
         self.assertNotIn("https://cdn", html)
 
-    def test_html_secures_and_exposes_visual_playback(self) -> None:
+    def test_html_is_script_free_and_links_sources(self) -> None:
         html = render_html(self.paper, self.digest)
         policy = re.search(r'Content-Security-Policy" content="([^"]+)', html)
 
         self.assertIsNotNone(policy)
-        self.assertRegex(policy.group(1), r"script-src 'sha256-[A-Za-z0-9+/]+=*'")
-        self.assertNotIn("script-src 'unsafe-inline'", policy.group(1))
-        self.assertIn('data-action="play"', html)
-        self.assertIn('data-action="pause"', html)
-        self.assertIn('role="group" aria-label="Visual playback controls"', html)
-        self.assertIn('aria-live="polite"', html)
-        self.assertIn(".visual-controls[hidden]", html)
+        self.assertNotIn("script-src", policy.group(1))
+        self.assertNotIn("<script", html)
+        self.assertNotIn("data-action=", html)
         self.assertIn("prefers-reduced-motion:reduce", html)
         self.assertIn(
             'href="https://arxiv.org/html/2607.17331v1#S3.p1"',
+            html,
+        )
+        self.assertEqual(html.count('class="source-label visual-source"'), 1)
+        self.assertIn(
+            'href="https://arxiv.org/html/2607.17331v1#S2.p1"',
             html,
         )
 
@@ -233,12 +279,34 @@ class DigestTests(unittest.TestCase):
         html = render_html(self.paper, self.digest)
 
         self.assertIn('-apple-system,BlinkMacSystemFont,"SF Pro Text"', html)
-        self.assertIn("min-height:44px", html)
         self.assertIn("@media (prefers-contrast:more)", html)
-        self.assertIn("@media (prefers-color-scheme:dark)", html)
         self.assertIn('class="skip-link" href="#main-content"', html)
-        self.assertIn('aria-label="RPL paper classification"', html)
+        self.assertNotIn("RPL paper classification", html)
+        self.assertNotIn("RPL · Research paper guide", html)
+        self.assertNotIn('class="confidence', html.lower())
+        self.assertNotIn("moderate confidence", html.lower())
         self.assertNotIn("visual-pulse", html)
+
+    def test_outline_is_compact_and_does_not_duplicate_the_paper_map(self) -> None:
+        paper = Paper(
+            paper_id="paper",
+            title="Outline fallback",
+            authors=[],
+            published=None,
+            source_url="https://arxiv.org/html/2607.10000v1",
+            abstract="A complete abstract without an explicit process or architecture.",
+            sections=[
+                Section("Introduction", 2, anchor="S1"),
+                Section("Results", 2, anchor="S2"),
+            ],
+        )
+
+        html = render_html(paper, build_digest(paper))
+
+        self.assertEqual(html.count("Paper map"), 0)
+        self.assertIn('data-visual-type="paper-outline"', html)
+        self.assertNotIn('class="source-label visual-source"', html)
+        self.assertIn('align-items:start', html)
 
     def test_older_section_data_falls_back_to_the_section_anchor(self) -> None:
         paper = Paper(

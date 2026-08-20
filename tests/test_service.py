@@ -21,8 +21,9 @@ class AnalysisServiceTests(unittest.TestCase):
         payload = json.loads(self.analysis.json)
         self.assertEqual(payload["comparison"]["status"], "not-generated")
         self.assertIn(
-            "&quot;schema_version&quot;: &quot;0.6&quot;", self.analysis.html
+            "&quot;schema_version&quot;: &quot;0.8&quot;", self.analysis.html
         )
+        self.assertEqual(self.analysis.output_quality.status, "ready")
 
     def test_writes_selected_outputs_to_a_portable_paper_folder(self) -> None:
         with TemporaryDirectory() as directory:

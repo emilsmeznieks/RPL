@@ -56,7 +56,7 @@ class Digest:
     evidence: list[SourcedStatement]
     limitations: list[SourcedStatement]
     takeaways: list[SourcedStatement]
-    extraction_method: str = "deterministic-extractive-v1"
+    extraction_method: str = "deterministic-extractive-v2"
     paper_type: str = "unknown"
     paper_type_confidence: str = "low"
 
@@ -74,6 +74,8 @@ class VisualNode:
     source_section: str
     source_text: str
     source_anchor: str | None = None
+    group: str | None = None
+    detail: str | None = None
 
 
 @dataclass(slots=True)
@@ -96,7 +98,7 @@ class VisualSpec:
     confidence: str
     nodes: list[VisualNode]
     edges: list[VisualEdge]
-    extraction_method: str = "deterministic-visual-v1"
+    extraction_method: str = "deterministic-visual-v2"
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -111,6 +113,30 @@ class GlossaryTerm:
     source_section: str
     source_text: str
     source_anchor: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(slots=True)
+class SectionQuality:
+    """A deterministic decision to show or omit one reader-facing section."""
+
+    key: str
+    status: str
+    item_count: int
+    reason: str
+
+
+@dataclass(slots=True)
+class OutputQuality:
+    """Machine-readable quality decisions applied before rendering."""
+
+    schema_version: str
+    status: str
+    sections: list[SectionQuality]
+    warnings: list[str] = field(default_factory=list)
+    method: str = "deterministic-output-quality-v1"
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

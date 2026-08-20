@@ -11,6 +11,12 @@ TERM_WITH_SHORT_FORM = re.compile(
     r"\(([A-Z][A-Z0-9-]{1,9})\)"
 )
 WORD = re.compile(r"[A-Za-z]+")
+NON_TECHNICAL_EXPANSION_WORDS = {
+    "journal",
+    "university",
+    "institute",
+    "association",
+}
 LATEX_SYMBOLS = {
     r"\Delta": "Δ",
     r"\alpha": "α",
@@ -70,6 +76,8 @@ def build_glossary(paper: Paper, limit: int = 8) -> list[GlossaryTerm]:
                 continue
             term = _defined_term(match.group(1), short_form)
             if not term:
+                continue
+            if any(word.lower() in NON_TECHNICAL_EXPANSION_WORDS for word in term.split()):
                 continue
             seen.add(short_form)
             terms.append(

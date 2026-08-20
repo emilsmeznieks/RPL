@@ -59,6 +59,7 @@ def analyze_for_mcp(
             "paper_type_confidence": analysis.digest.paper_type_confidence,
         },
         "digest": analysis.digest.to_dict(),
+        "output_quality": analysis.output_quality.to_dict(),
         "comparison": analysis.comparison.to_dict(),
         "artifacts": _artifact_summary(paths, paper_key),
     }

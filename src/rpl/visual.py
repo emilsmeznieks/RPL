@@ -24,6 +24,26 @@ ARCHITECTURE_VERBS = re.compile(
     r"^(.{2,60}?)\s+(?:handles?|manages?|provides?|ensures?|coordinates?|contains?|supports?)\b",
     re.I,
 )
+ENCODER_DECODER_ARCHITECTURE_SIGNALS = (
+    "encoder-decoder structure",
+    "encoder maps an input sequence",
+    "decoder then generates an output sequence",
+)
+ENCODER_STACK_SIGNALS = (
+    "encoder is composed of a stack",
+    "multi-head self-attention",
+    "feed-forward network",
+)
+DECODER_STACK_SIGNALS = (
+    "decoder is also composed of a stack",
+    "attention over the output of the encoder",
+    "prevent positions from attending to subsequent positions",
+)
+ENCODER_DECODER_ATTENTION_SIGNALS = (
+    'in "encoder-decoder attention" layers',
+    "queries come from the previous decoder layer",
+    "memory keys and values come from the output of the encoder",
+)
 
 
 class VisualSpecError(ValueError):
@@ -33,9 +53,14 @@ class VisualSpecError(ValueError):
 def validate_visual_spec(spec: VisualSpec) -> None:
     """Fail fast if a renderer could not safely interpret the graph."""
 
-    if spec.schema_version != "0.1":
+    if spec.schema_version != "0.2":
         raise VisualSpecError(f"Unsupported visual schema: {spec.schema_version}")
-    if spec.visual_type not in {"process", "layered-architecture", "paper-outline"}:
+    if spec.visual_type not in {
+        "encoder-decoder",
+        "process",
+        "layered-architecture",
+        "paper-outline",
+    }:
         raise VisualSpecError(f"Unsupported visual type: {spec.visual_type}")
     if spec.confidence not in {"low", "medium", "high"}:
         raise VisualSpecError(f"Unsupported confidence: {spec.confidence}")
@@ -121,15 +146,142 @@ def _architecture_spec(paper: Paper) -> VisualSpec | None:
                 for index in range(len(nodes) - 1)
             ]
             return VisualSpec(
-                schema_version="0.1",
+                schema_version="0.2",
                 visual_type="layered-architecture",
                 title="System architecture",
-                description=f"Architectural layers extracted from a figure in {section.title}.",
+                description="Architecture layers named in the paper.",
                 confidence="medium",
                 nodes=nodes,
                 edges=edges,
             )
     return None
+
+
+def _matching_paragraph(
+    paper: Paper, signals: tuple[str, ...]
+) -> tuple[Section, str, str | None] | None:
+    for section in paper.sections:
+        for index, paragraph in enumerate(section.paragraphs):
+            lowered = paragraph.lower()
+            if all(signal in lowered for signal in signals):
+                anchor = (
+                    section.paragraph_anchors[index]
+                    if index < len(section.paragraph_anchors)
+                    else section.anchor
+                )
+                return section, paragraph, anchor
+    return None
+
+
+def _encoder_decoder_spec(paper: Paper) -> VisualSpec | None:
+    architecture = _matching_paragraph(paper, ENCODER_DECODER_ARCHITECTURE_SIGNALS)
+    encoder = _matching_paragraph(paper, ENCODER_STACK_SIGNALS)
+    decoder = _matching_paragraph(paper, DECODER_STACK_SIGNALS)
+    cross_attention = _matching_paragraph(paper, ENCODER_DECODER_ATTENTION_SIGNALS)
+    if not architecture or not encoder or not decoder or not cross_attention:
+        return None
+
+    architecture_section, architecture_text, architecture_anchor = architecture
+    encoder_section, encoder_text, encoder_anchor = encoder
+    decoder_section, decoder_text, decoder_anchor = decoder
+    cross_section, cross_text, cross_anchor = cross_attention
+    nodes = [
+        VisualNode(
+            "input",
+            "Input sequence",
+            "input",
+            architecture_section.title,
+            architecture_text,
+            architecture_anchor,
+            group="encoder",
+        ),
+        VisualNode(
+            "encoder-attention",
+            "Multi-head self-attention",
+            "layer",
+            encoder_section.title,
+            encoder_text,
+            encoder_anchor,
+            group="encoder",
+            detail="First sub-layer",
+        ),
+        VisualNode(
+            "encoder-feed-forward",
+            "Feed-forward network",
+            "layer",
+            encoder_section.title,
+            encoder_text,
+            encoder_anchor,
+            group="encoder",
+            detail="Second sub-layer",
+        ),
+        VisualNode(
+            "previous-output",
+            "Previous outputs",
+            "input",
+            architecture_section.title,
+            architecture_text,
+            architecture_anchor,
+            group="decoder",
+        ),
+        VisualNode(
+            "decoder-attention",
+            "Masked self-attention",
+            "layer",
+            decoder_section.title,
+            decoder_text,
+            decoder_anchor,
+            group="decoder",
+            detail="Masks later positions",
+        ),
+        VisualNode(
+            "cross-attention",
+            "Encoder–decoder attention",
+            "layer",
+            cross_section.title,
+            cross_text,
+            cross_anchor,
+            group="decoder",
+            detail="Uses encoder output",
+        ),
+        VisualNode(
+            "decoder-feed-forward",
+            "Feed-forward network",
+            "layer",
+            decoder_section.title,
+            decoder_text,
+            decoder_anchor,
+            group="decoder",
+            detail="Feed-forward sub-layer",
+        ),
+        VisualNode(
+            "output",
+            "Output sequence",
+            "output",
+            architecture_section.title,
+            architecture_text,
+            architecture_anchor,
+            group="decoder",
+        ),
+    ]
+    edges = [
+        VisualEdge("input", "encoder-attention"),
+        VisualEdge("encoder-attention", "encoder-feed-forward"),
+        VisualEdge("encoder-feed-forward", "cross-attention", "keys + values"),
+        VisualEdge("previous-output", "decoder-attention"),
+        VisualEdge("decoder-attention", "cross-attention", "queries"),
+        VisualEdge("cross-attention", "decoder-feed-forward"),
+        VisualEdge("decoder-feed-forward", "output"),
+    ]
+    return VisualSpec(
+        schema_version="0.2",
+        visual_type="encoder-decoder",
+        title="Encoder–decoder architecture",
+        description="The sourced information flow through the paper's model.",
+        confidence="high",
+        nodes=nodes,
+        edges=edges,
+    )
 
 
 def _process_spec(paper: Paper) -> VisualSpec | None:
@@ -160,10 +312,10 @@ def _process_spec(paper: Paper) -> VisualSpec | None:
                     for index in range(len(nodes) - 1)
                 ]
                 return VisualSpec(
-                    schema_version="0.1",
+                    schema_version="0.2",
                     visual_type="process",
                     title="How the proposed system works",
-                    description=f"A process sequence extracted from {section.title}.",
+                    description="Steps named in the paper.",
                     confidence="medium",
                     nodes=nodes,
                     edges=edges,
@@ -191,10 +343,10 @@ def _outline_spec(paper: Paper) -> VisualSpec:
         for index in range(len(nodes) - 1)
     ]
     return VisualSpec(
-        schema_version="0.1",
+        schema_version="0.2",
         visual_type="paper-outline",
         title="Paper structure",
-        description="A section-by-section view used because no explicit process was identified.",
+        description="Main sections in reading order.",
         confidence="low",
         nodes=nodes,
         edges=edges,
@@ -204,6 +356,11 @@ def _outline_spec(paper: Paper) -> VisualSpec:
 def build_visual_spec(paper: Paper) -> VisualSpec:
     """Extract a conservative visual graph without generating new claims."""
 
-    spec = _architecture_spec(paper) or _process_spec(paper) or _outline_spec(paper)
+    spec = (
+        _encoder_decoder_spec(paper)
+        or _architecture_spec(paper)
+        or _process_spec(paper)
+        or _outline_spec(paper)
+    )
     validate_visual_spec(spec)
     return spec

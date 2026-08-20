@@ -20,6 +20,30 @@ PROBLEM_SIGNALS = (
     "fails",
     "gap",
 )
+PROBLEM_STRONG_SIGNALS = (
+    "bottleneck",
+    "cannot",
+    "constraint",
+    "drawback",
+    "fails",
+    "gap",
+    "lack",
+    "limitation",
+    "limited by",
+    "preclude",
+    "prevent",
+    "problem",
+    "unable",
+)
+PROBLEM_CONSEQUENCE_SIGNALS = (
+    "critical",
+    "difficult",
+    "expensive",
+    "memory",
+    "parallel",
+    "scalability",
+    "slow",
+)
 IDEA_SIGNALS = (
     "this paper presents",
     "we present",
@@ -154,6 +178,43 @@ def _first_matching(
     return None
 
 
+def _problem_statement(
+    items: Iterable[tuple[str, str, str | None, str | None]],
+) -> SourcedStatement | None:
+    """Select an explicit constraint or research gap instead of background text."""
+
+    candidates: list[tuple[int, int, SourcedStatement]] = []
+    for order, (text, section, section_anchor, source_anchor) in enumerate(items):
+        lowered = text.lower()
+        strong_count = sum(signal in lowered for signal in PROBLEM_STRONG_SIGNALS)
+        weak_count = sum(signal in lowered for signal in PROBLEM_SIGNALS)
+        consequence_count = sum(
+            signal in lowered for signal in PROBLEM_CONSEQUENCE_SIGNALS
+        )
+        if not strong_count:
+            continue
+        section_score = 3 if "introduction" in section.lower() else 2
+        idea_penalty = 6 if any(signal in lowered for signal in IDEA_SIGNALS) else 0
+        question_penalty = 3 if "?" in text else 0
+        score = (
+            section_score
+            + (5 * strong_count)
+            + (2 * weak_count)
+            + consequence_count
+            - idea_penalty
+            - question_penalty
+        )
+        if score >= 7:
+            candidates.append(
+                (
+                    score,
+                    order,
+                    _statement(text, section, section_anchor, source_anchor),
+                )
+            )
+    return _ranked_unique(candidates, 1)[0] if candidates else None
+
+
 def _text_key(text: str) -> str:
     return re.sub(r"\W+", " ", text.lower()).strip()
 
@@ -243,11 +304,7 @@ def build_digest(paper: Paper) -> Digest:
         if "introduction" in item[1].lower()
     ]
 
-    problem = _first_matching(
-        abstract_sentences + introduction_sentences, PROBLEM_SIGNALS
-    )
-    if problem is None and abstract_sentences and paper_type != "theoretical":
-        problem = _statement(*abstract_sentences[0])
+    problem = _problem_statement(abstract_sentences + introduction_sentences)
 
     core_idea = _first_matching(abstract_sentences, IDEA_SIGNALS)
     if core_idea is None and paper_type == "theoretical" and abstract_sentences:
