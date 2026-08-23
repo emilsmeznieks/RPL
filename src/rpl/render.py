@@ -171,7 +171,7 @@ def knowledge_payload(
         raise ValueError("The comparison focal paper must match the rendered paper.")
     validate_comparison_set(comparison)
     return {
-        "schema_version": "0.8",
+        "schema_version": "0.9",
         "paper": paper.to_dict(),
         "digest": digest.to_dict(),
         "visual": visual.to_dict(),
