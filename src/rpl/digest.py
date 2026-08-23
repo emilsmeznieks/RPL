@@ -4,6 +4,7 @@ import re
 from collections.abc import Iterable
 
 from .models import Digest, Paper, SourcedStatement
+from .quality import evidence_rejection_reason
 
 
 SENTENCE_BOUNDARY = re.compile(r"(?<=[.!?])\s+(?=[A-Z0-9])")
@@ -148,6 +149,17 @@ THEORETICAL_WEAK_RESULT_SIGNALS = (
     "we find",
     "we obtain",
 )
+QUANTITATIVE_RESULT_SIGNALS = (
+    "average",
+    "best configuration",
+    "best system",
+    "gap of",
+    "mean score",
+    "reaches",
+    "rises from",
+    "share of submissions",
+    "strongest system",
+)
 
 
 def sentences(text: str) -> list[str]:
@@ -223,22 +235,32 @@ def _unique(
     items: Iterable[SourcedStatement],
     limit: int,
     excluded: Iterable[SourcedStatement | None] = (),
+    *,
+    dedupe_measurements: bool = False,
 ) -> list[SourcedStatement]:
     result: list[SourcedStatement] = []
     seen_text = {_text_key(item.text) for item in excluded if item is not None}
     seen_paragraphs: set[tuple[str, str]] = set()
+    seen_measurements: list[set[str]] = []
     for item in items:
         text_key = _text_key(item.text)
+        measurements = set(re.findall(r"(?<![A-Za-z])\d+(?:\.\d+)?%?", item.text))
         paragraph_key = None
         if item.source_anchor and item.source_anchor != item.section_anchor:
             paragraph_key = (item.section, item.source_anchor)
         if text_key in seen_text or (
             paragraph_key is not None and paragraph_key in seen_paragraphs
+        ) or (
+            dedupe_measurements
+            and len(measurements) >= 2
+            and any(len(measurements & seen) >= 2 for seen in seen_measurements)
         ):
             continue
         seen_text.add(text_key)
         if paragraph_key is not None:
             seen_paragraphs.add(paragraph_key)
+        if dedupe_measurements and measurements:
+            seen_measurements.append(measurements)
         result.append(item)
         if len(result) == limit:
             break
@@ -249,9 +271,16 @@ def _ranked_unique(
     items: Iterable[tuple[int, int, SourcedStatement]],
     limit: int,
     excluded: Iterable[SourcedStatement | None] = (),
+    *,
+    dedupe_measurements: bool = False,
 ) -> list[SourcedStatement]:
     ranked = sorted(items, key=lambda item: (-item[0], item[1]))
-    return _unique((item[2] for item in ranked), limit, excluded)
+    return _unique(
+        (item[2] for item in ranked),
+        limit,
+        excluded,
+        dedupe_measurements=dedupe_measurements,
+    )
 
 
 def classify_paper(paper: Paper) -> tuple[str, str]:
@@ -316,12 +345,17 @@ def build_digest(paper: Paper) -> Digest:
     for order, (text, section, section_anchor, source_anchor) in enumerate(
         abstract_sentences + all_section_sentences
     ):
+        if evidence_rejection_reason(text) is not None:
+            continue
         lowered = text.lower()
         section_lower = section.lower()
         result_section = any(token in section_lower for token in ("result", "performance", "comparison", "ablation", "discussion"))
         outcome = any(token in lowered for token in EVIDENCE_OUTCOME_SIGNALS)
         general_signal = any(token in lowered for token in EVIDENCE_SIGNALS)
         has_number = bool(NUMBER_SIGNAL.search(text))
+        quantitative_result_count = sum(
+            signal in lowered for signal in QUANTITATIVE_RESULT_SIGNALS
+        )
         theoretical_strong_count = sum(
             signal in lowered for signal in THEORETICAL_STRONG_RESULT_SIGNALS
         )
@@ -372,12 +406,14 @@ def build_digest(paper: Paper) -> Digest:
         elif (
             paper_type != "theoretical"
             and has_number
-            and (result_section or outcome)
+            and (result_section or outcome or quantitative_result_count)
         ):
             score = (
                 (5 if result_section else 0)
                 + (4 if outcome else 0)
                 + (1 if general_signal else 0)
+                + (3 * quantitative_result_count)
+                + (2 if section == "Abstract" else 0)
             )
             evidence_candidates.append(
                 (
@@ -434,7 +470,10 @@ def build_digest(paper: Paper) -> Digest:
             )
 
     evidence = _ranked_unique(
-        evidence_candidates, 5, excluded=(problem, core_idea)
+        evidence_candidates,
+        5,
+        excluded=(problem, core_idea),
+        dedupe_measurements=True,
     )
     takeaway_candidates = discussion_candidates
     if paper_type != "theoretical":

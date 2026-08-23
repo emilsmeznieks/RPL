@@ -4,7 +4,7 @@ RPL turns an arXiv paper into a short learning package for people and AI agents.
 
 Give RPL an arXiv URL or ID. It creates:
 
-- `paper.html` — a readable, responsive page with key ideas, evidence, limitations, and a sourced visual or paper outline
+- `paper.html` — a readable, responsive page with key ideas, concise evidence, and sourced visuals
 - `paper.md` — a learning card in Markdown
 - `paper.json` — structured content, source information, and related-paper comparisons for AI agents and other tools
 
@@ -128,8 +128,9 @@ rpl learn ./paper.html
 - Evidence worth checking
 - Limitations
 - Key takeaways
-- Paper sections, equations, and figure captions in the structured JSON
-- A sourced visual of an encoder–decoder model, another supported architecture, or a process when the paper states one clearly
+- Paper sections, equations, figure captions, and source-image availability in the structured JSON
+- A sourced visual of an encoder–decoder model, supported architecture, process, or benchmark lifecycle when the paper states one clearly
+- Caption-based figure summaries when arXiv does not provide the source image
 
 Every selected statement includes its source section and exact paragraph when arXiv provides one. Every visual node also keeps the exact text that supports it.
 
@@ -143,6 +144,8 @@ The reader layout adapts to the content. Unsupported sections are omitted, short
 - RPL adds labels and visual structure. These are RPL-created structure, not paper quotations.
 - Results are labeled as results reported by the paper, not as proven facts.
 - Result candidates that look like background, dataset setup, or inference configuration are removed from the reader output.
+- Table contents and table-like evidence are never shown as reader prose.
+- Excessively long or number-dominated evidence is rejected.
 - Empty sections are omitted instead of being displayed as placeholder cards.
 - Reader views remove citation-number clutter but do not replace the paper's words.
 - Acronym expansions are included only when the paper states them directly.
@@ -160,6 +163,8 @@ The top-level JSON fields are:
 - `paper` — paper metadata, abstract, sections, equations, and figure captions
 - `digest` — selected problem, core idea, results, limitations, and takeaways
 - `visual` — sourced nodes and connections for the HTML visual
+- `scoring` — a sourced scoring ladder and original piecewise equation when detected
+- `change_layers` — a sourced distinction between execution-level and learning-level changes when stated by the paper
 - `glossary` — acronym expansions stated by the paper
 - `output_quality` — the sections shown or omitted, the reason for each decision, and any filtered result candidates
 - `comparison` — related-paper data or an explicit discovery status
@@ -199,13 +204,14 @@ RPL currently copies relevant statements from the paper instead of generating a 
 - A PDF URL is accepted as an identifier, but RPL reads the matching arXiv HTML page. It does not parse the PDF.
 - The selection rules are designed primarily for English-language papers.
 - RPL can miss important content or select weak, repeated, or conflicting statements. It does not reconcile contradictions in a paper.
-- Equations and figure captions are preserved in `paper.json`; the short HTML and Markdown views do not show all of them.
-- Visual extraction supports explicit encoder–decoder descriptions, clear process sequences, and specific architecture-caption patterns. Other papers receive a simple section outline.
+- Equations are preserved in `paper.json`. Only detected scoring mechanisms are explained visually in the reader.
+- Figure captions are shown as sourced summaries. RPL does not retrieve missing images from the paper's PDF.
+- Visual extraction supports explicit encoder–decoder descriptions, clear process sequences, specific architecture-caption patterns, and supported benchmark protocols. Other papers receive a simple section outline and are not marked ready on that basis alone.
 - Related-paper discovery currently uses title and abstract overlap from arXiv metadata. It does not yet inspect citation graphs, shared equations, or full text from candidate papers.
 
 ## Current status
 
-RPL 0.9 supports:
+RPL 0.10 supports:
 
 - Modern and legacy arXiv URLs and IDs
 - Saved arXiv HTML files
@@ -214,6 +220,11 @@ RPL 0.9 supports:
 - Encoder–decoder architecture extraction from the paper's model and stack descriptions
 - Architecture extraction from figure captions
 - Process extraction from clear step sequences
+- Benchmark lifecycle extraction from figure captions and protocol text
+- Piecewise scoring ladders with the original equation preserved in JSON
+- Execution-level and learning-level change maps when the paper defines both
+- Front-matter figure retention and caption fallbacks for unavailable source images
+- Parser and evidence safeguards against flattened tables
 - Safe fallback to a paper-section visual
 - Paper-defined acronym expansions
 - Direct links to matching arXiv paragraphs or sections

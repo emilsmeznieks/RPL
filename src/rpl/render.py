@@ -14,11 +14,12 @@ from .models import (
     GlossaryTerm,
     OutputQuality,
     Paper,
+    ScoringSpec,
     SourcedStatement,
     VisualSpec,
 )
 from .quality import apply_output_quality_rules, section_is_shown
-from .visual import build_visual_spec
+from .visual import build_change_layer_spec, build_scoring_spec, build_visual_spec
 
 
 def _source_href(source_url: str, anchor: str | None) -> str | None:
@@ -81,17 +82,74 @@ def _node_label(value: str, maximum: int = 42) -> str:
     return value if len(value) <= maximum else value[: maximum - 1].rstrip() + "…"
 
 
-def outline_mermaid(paper: Paper) -> str:
-    major = [section for section in paper.sections if section.level == 2][:6]
-    if not major:
-        return "flowchart LR\n  A[Paper] --> B[No section outline extracted]"
-    lines = ["flowchart LR", '  P["Paper"]']
-    previous = "P"
-    for index, section in enumerate(major, start=1):
-        node = f"S{index}"
-        lines.append(f'  {previous} --> {node}["{_node_label(section.title)}"]')
-        previous = node
+def visual_mermaid(spec: VisualSpec) -> str:
+    """Render the selected sourced visual rather than an unrelated section outline."""
+
+    lines = ["flowchart LR"]
+    for node in spec.nodes:
+        lines.append(f'  {node.id.replace("-", "_")}["{_node_label(node.label, 64)}"]')
+    for edge in spec.edges:
+        source = edge.source.replace("-", "_")
+        target = edge.target.replace("-", "_")
+        label = _node_label(edge.label, 28)
+        lines.append(f'  {source} -->|"{label}"| {target}')
     return "\n".join(lines)
+
+
+def _caption_excerpt(caption: str) -> str:
+    parts = re.split(r"(?<=[.!?])\s+(?=[A-Z0-9])", reading_text(caption))
+    available = [part.strip() for part in parts if part.strip()]
+    selected = available[:1]
+    if selected and len(selected[0]) < 60 and len(available) > 1:
+        selected.append(available[1])
+    return " ".join(selected)
+
+
+def _figure_records(paper: Paper) -> list[tuple[str, Any]]:
+    return [
+        (section.title, record)
+        for section in paper.sections
+        for record in section.figure_records
+    ]
+
+
+def _markdown_figures(paper: Paper) -> str:
+    records = _figure_records(paper)
+    if not records:
+        return ""
+    lines = ["## Figures from the paper", ""]
+    for section, record in records:
+        source = _markdown_source(paper.source_url, section, record.anchor)
+        note = " Original image unavailable in arXiv HTML; caption shown." if record.image_status == "unavailable" else ""
+        lines.append(f"- {_caption_excerpt(record.caption)}{note} _(Source: {source})_")
+    return "\n".join(lines) + "\n"
+
+
+def _markdown_scoring(paper: Paper, scoring: ScoringSpec | None) -> str:
+    if scoring is None:
+        return ""
+    source = _markdown_source(paper.source_url, scoring.source_section, scoring.source_anchor)
+    levels = "\n".join(f"- **{level.value}:** {level.label}" for level in scoring.levels)
+    return (
+        f"## {scoring.title}\n\n{levels}\n\n{scoring.explanation} "
+        f"_(Source: {source})_\n"
+    )
+
+
+def _markdown_change_layers(paper: Paper, spec: VisualSpec | None) -> str:
+    if spec is None:
+        return ""
+    execution = ", ".join(node.label for node in spec.nodes if node.group == "execution")
+    learning = ", ".join(node.label for node in spec.nodes if node.group == "learning")
+    source = _markdown_source(
+        paper.source_url, spec.nodes[0].source_section, spec.nodes[0].source_anchor
+    )
+    return (
+        f"## {spec.title}\n\n"
+        f"- **Execution-level changes:** {execution}\n"
+        f"- **Learning-level changes:** {learning}\n\n"
+        f"_Source: {source}_\n"
+    )
 
 
 def render_markdown(
@@ -101,6 +159,8 @@ def render_markdown(
     keywords = ", ".join(paper.keywords) or "Not provided"
     glossary = build_glossary(paper)
     visual = build_visual_spec(paper)
+    scoring = build_scoring_spec(paper)
+    change_layers = build_change_layer_spec(paper)
     if output_quality is None:
         digest, output_quality = apply_output_quality_rules(
             paper, digest, visual, glossary
@@ -140,12 +200,21 @@ def render_markdown(
 """)
     if section_is_shown(output_quality, "glossary"):
         sections.append(_markdown_glossary(paper, glossary))
-    sections.append(f"""## Paper map
+    sections.append(f"""## {visual.title}
 
 ```mermaid
-{outline_mermaid(paper)}
+{visual_mermaid(visual)}
 ```
 """)
+    scoring_section = _markdown_scoring(paper, scoring)
+    if scoring_section:
+        sections.append(scoring_section)
+    change_layer_section = _markdown_change_layers(paper, change_layers)
+    if change_layer_section:
+        sections.append(change_layer_section)
+    figure_section = _markdown_figures(paper)
+    if figure_section:
+        sections.append(figure_section)
     if section_is_shown(output_quality, "abstract"):
         sections.append(f"""## Abstract
 
@@ -161,6 +230,8 @@ def knowledge_payload(
     output_quality: OutputQuality | None = None,
 ) -> dict[str, Any]:
     visual = build_visual_spec(paper)
+    scoring = build_scoring_spec(paper)
+    change_layers = build_change_layer_spec(paper)
     glossary = build_glossary(paper)
     if output_quality is None:
         digest, output_quality = apply_output_quality_rules(
@@ -171,10 +242,12 @@ def knowledge_payload(
         raise ValueError("The comparison focal paper must match the rendered paper.")
     validate_comparison_set(comparison)
     return {
-        "schema_version": "0.9",
+        "schema_version": "0.10",
         "paper": paper.to_dict(),
         "digest": digest.to_dict(),
         "visual": visual.to_dict(),
+        "scoring": scoring.to_dict() if scoring else None,
+        "change_layers": change_layers.to_dict() if change_layers else None,
         "glossary": [term.to_dict() for term in glossary],
         "output_quality": output_quality.to_dict(),
         "comparison": comparison.to_dict(),
@@ -182,6 +255,21 @@ def knowledge_payload(
             "source_url": paper.source_url,
             "extraction_method": digest.extraction_method,
             "generated_claims": False,
+            "source_images": {
+                "available": sum(
+                    record.image_status == "available"
+                    for _, record in _figure_records(paper)
+                ),
+                "unavailable": sum(
+                    record.image_status == "unavailable"
+                    for _, record in _figure_records(paper)
+                ),
+                "not_provided": sum(
+                    record.image_status == "not-provided"
+                    for _, record in _figure_records(paper)
+                ),
+            },
+            "warnings": list(paper.extraction_warnings),
         },
     }
 
@@ -245,21 +333,6 @@ def _html_list(
             "</li>"
         )
     return f'<ul class="statement-list">{"".join(cards)}</ul>'
-
-
-def _html_paper_map(paper: Paper) -> str:
-    major = [section for section in paper.sections if section.level == 2][:6]
-    if not major:
-        return '<p class="muted">No section outline extracted.</p>'
-    nodes = []
-    for index, section in enumerate(major, start=1):
-        nodes.append(
-            '<li class="map-node">'
-            f'<span class="map-number">{index:02d}</span>'
-            f"<span>{escape(section.title)}</span>"
-            "</li>"
-        )
-    return f'<ol class="paper-map">{"".join(nodes)}</ol>'
 
 
 def _html_abstract(text: str) -> str:
@@ -366,18 +439,99 @@ def _html_visual(paper: Paper, spec: VisualSpec) -> str:
         )
     source = ""
     if spec.visual_type != "paper-outline":
-        first_node = spec.nodes[0]
-        source = _html_source(
-            paper.source_url,
-            first_node.source_section,
-            first_node.source_anchor,
-            "source-label visual-source",
-        )
+        links = []
+        seen = set()
+        for node in spec.nodes:
+            key = (node.source_section, node.source_anchor)
+            if key in seen:
+                continue
+            seen.add(key)
+            href = _source_href(paper.source_url, node.source_anchor)
+            links.append(f'<a href="{_safe_href(href)}">{escape(node.source_section)}</a>')
+        source = f'<p class="source-label visual-source">Sources: {"; ".join(links)}</p>'
     return (
         '<div class="visual-stage">'
         f'<ol class="visual-flow" data-visual-type="{escape(spec.visual_type, quote=True)}">{"".join(nodes)}</ol>'
         f"{source}"
         "</div>"
+    )
+
+
+def _html_scoring(paper: Paper, scoring: ScoringSpec | None) -> str:
+    if scoring is None:
+        return ""
+    levels = "".join(
+        '<li class="score-level">'
+        f'<strong>{escape(level.value)}</strong><span>{escape(level.label)}</span>'
+        '</li>'
+        for level in scoring.levels
+    )
+    source = _html_source(
+        paper.source_url,
+        scoring.source_section,
+        scoring.source_anchor,
+        "source-label",
+    )
+    return (
+        '<section class="card wide" aria-labelledby="scoring">'
+        f'<h2 id="scoring">{escape(scoring.title)}</h2>'
+        f'<ol class="score-ladder">{levels}</ol>'
+        f'<p class="scoring-explanation">{escape(scoring.explanation)}</p>'
+        f'{source}</section>'
+    )
+
+
+def _html_figures(paper: Paper) -> str:
+    records = _figure_records(paper)
+    if not records:
+        return ""
+    items = []
+    for section, record in records:
+        unavailable = ""
+        if record.image_status == "unavailable":
+            unavailable = '<p class="figure-status">Original image unavailable in arXiv HTML; caption shown.</p>'
+        source = _html_source(
+            paper.source_url, section, record.anchor, "source-label"
+        )
+        items.append(
+            '<article class="figure-summary">'
+            f'<p>{escape(_caption_excerpt(record.caption))}</p>{unavailable}{source}'
+            '</article>'
+        )
+    return (
+        '<section class="card wide" aria-labelledby="figures">'
+        '<h2 id="figures">Figures from the paper</h2>'
+        f'<div class="figure-grid">{"".join(items)}</div></section>'
+    )
+
+
+def _html_change_layers(paper: Paper, spec: VisualSpec | None) -> str:
+    if spec is None:
+        return ""
+    groups = []
+    for key, heading in (
+        ("execution", "Execution-level changes"),
+        ("learning", "Learning-level changes"),
+    ):
+        items = "".join(
+            f"<li>{escape(node.label)}</li>"
+            for node in spec.nodes
+            if node.group == key
+        )
+        groups.append(
+            '<section class="change-group">'
+            f'<h3>{escape(heading)}</h3><ul>{items}</ul></section>'
+        )
+    source = _html_source(
+        paper.source_url,
+        spec.nodes[0].source_section,
+        spec.nodes[0].source_anchor,
+        "source-label",
+    )
+    return (
+        '<section class="card wide" aria-labelledby="change-layers">'
+        f'<h2 id="change-layers">{escape(spec.title)}</h2>'
+        f'<div class="change-grid">{"".join(groups)}</div>{source}</section>'
     )
 
 
@@ -412,6 +566,8 @@ def render_html(
     authors = ", ".join(paper.authors) or "Unknown authors"
     keywords = ", ".join(paper.keywords) or "Not provided"
     visual = build_visual_spec(paper)
+    scoring = build_scoring_spec(paper)
+    change_layers = build_change_layer_spec(paper)
     glossary = build_glossary(paper)
     if output_quality is None:
         digest, output_quality = apply_output_quality_rules(
@@ -446,11 +602,9 @@ def render_html(
             f'<h2 id="visual">{escape(visual.title)}</h2>{_html_visual(paper, visual)}'
             "</section>"
         )
-    paper_map = "" if visual.visual_type == "paper-outline" or not visual_card else (
-        '<section class="card wide" aria-labelledby="map">'
-        '<h2 id="map">Paper map</h2>'
-        f'{_html_paper_map(paper)}</section>'
-    )
+    scoring_card = _html_scoring(paper, scoring)
+    figures_card = _html_figures(paper)
+    change_layers_card = _html_change_layers(paper, change_layers)
 
     body_specs = []
     if section_is_shown(output_quality, "evidence"):
@@ -530,10 +684,6 @@ def render_html(
     .statement:last-child {{ padding-bottom:0; }}
     .statement p:first-child {{ margin-top:0; }}
     .statement p:last-child {{ margin-bottom:0; }}
-    .paper-map {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); column-gap:28px; margin:0; padding:0; list-style:none; }}
-    .map-node {{ display:grid; grid-template-columns:2rem 1fr; gap:10px; padding:10px 0; border-top:1px solid var(--line); font-weight:600; }}
-    .map-node:nth-child(1),.map-node:nth-child(2) {{ border-top:0; }}
-    .map-number {{ color:var(--muted); font-size:.78rem; font-weight:500; }}
     .visual-flow {{ display:flex; align-items:stretch; gap:28px; margin:0; padding:0 2px 6px; list-style:none; overflow-x:auto; scrollbar-width:thin; }}
     .visual-node {{ position:relative; flex:1 0 160px; min-height:148px; display:flex; flex-direction:column; justify-content:space-between; gap:14px; padding:18px; border:1px solid var(--line-strong); border-radius:18px; background:var(--surface-solid); }}
     .visual-node:not(:last-child)::after {{ content:"→"; position:absolute; left:calc(100% + 8px); top:50%; width:12px; color:var(--muted); font-weight:700; transform:translateY(-50%); }}
@@ -544,6 +694,23 @@ def render_html(
     .visual-flow[data-visual-type="paper-outline"] .visual-node:nth-child(1),.visual-flow[data-visual-type="paper-outline"] .visual-node:nth-child(2) {{ border-top:0; }}
     .visual-flow[data-visual-type="paper-outline"] .visual-node::after {{ content:none; }}
     .visual-flow[data-visual-type="paper-outline"] .visual-node strong {{ font-size:1rem; font-weight:600; }}
+    .visual-flow[data-visual-type="benchmark-process"] {{ display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:14px; overflow:visible; padding:0; }}
+    .visual-flow[data-visual-type="benchmark-process"] .visual-node {{ min-height:118px; flex:auto; gap:10px; padding:16px; border-radius:14px; }}
+    .visual-flow[data-visual-type="benchmark-process"] .visual-node::after {{ content:none; }}
+    .score-ladder {{ position:relative; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; margin:0; padding:0; list-style:none; }}
+    .score-ladder::before {{ content:""; position:absolute; top:29px; left:8%; right:8%; height:2px; background:var(--line-strong); }}
+    .score-level {{ position:relative; display:grid; justify-items:center; gap:10px; text-align:center; }}
+    .score-level strong {{ z-index:1; display:grid; place-items:center; width:60px; height:60px; border:2px solid var(--accent); border-radius:50%; background:var(--surface-solid); color:var(--accent-strong); font-size:1.05rem; }}
+    .score-level span {{ max-width:18ch; font-size:.9rem; font-weight:600; }}
+    .scoring-explanation {{ max-width:72ch; margin:22px auto 0; text-align:center; }}
+    .figure-grid {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:14px; }}
+    .figure-summary {{ padding:18px; border:1px solid var(--line); border-radius:16px; }}
+    .figure-summary p:first-child {{ margin-top:0; }}
+    .figure-status {{ color:var(--muted); font-size:.84rem; }}
+    .change-grid {{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }}
+    .change-group {{ padding:18px; border:1px solid var(--line); border-radius:16px; }}
+    .change-group h3 {{ margin:0 0 12px; font-size:1.05rem; }}
+    .change-group ul {{ display:grid; gap:8px; margin:0; padding-left:1.2rem; }}
     .architecture-diagram {{ display:grid; gap:18px; }}
     .architecture-lane {{ padding:18px; border:1px solid var(--line); border-radius:16px; background:var(--surface-solid); }}
     .lane-heading {{ display:flex; align-items:baseline; justify-content:space-between; gap:16px; margin-bottom:14px; }}
@@ -570,7 +737,7 @@ def render_html(
     details {{ border-top:1px solid var(--line); padding-top:16px; }}
     summary {{ display:flex; align-items:center; min-height:44px; cursor:pointer; font-weight:650; }}
     pre {{ max-height:420px; overflow:auto; padding:18px; border-radius:14px; background:var(--code); color:var(--code-ink); font:13px/1.55 ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace; white-space:pre-wrap; overflow-wrap:anywhere; }}
-    @media (max-width:720px) {{ .shell {{ width:min(100% - 24px,1160px); }} .hero {{ padding-top:48px; }} h1 {{ font-size:clamp(2.35rem,12vw,3.5rem); }} .grid {{ grid-template-columns:1fr; gap:12px; padding-top:18px; }} .wide {{ grid-column:auto; }} .card {{ border-radius:18px; padding:22px 20px; }} .visual-flow {{ display:grid; overflow:visible; }} .visual-node {{ min-height:96px; }} .visual-node:not(:last-child)::after {{ content:"↓"; left:50%; top:calc(100% + 5px); transform:translateX(-50%); }} .map-node:nth-child(2) {{ border-top:1px solid var(--line); }} .visual-flow[data-visual-type="paper-outline"] {{ grid-template-columns:1fr; }} .visual-flow[data-visual-type="paper-outline"] .visual-node:nth-child(2) {{ border-top:1px solid var(--line); }} .lane-heading {{ align-items:flex-start; flex-direction:column; gap:3px; }} .encoder-flow,.decoder-flow {{ grid-template-columns:1fr; }} .architecture-node {{ min-height:78px; }} .architecture-node:not(:last-child)::after {{ content:"↓"; left:50%; top:calc(100% + 4px); transform:translateX(-50%); }} .architecture-bridge {{ grid-template-columns:1fr; justify-items:center; gap:2px; }} }}
+    @media (max-width:720px) {{ .shell {{ width:min(100% - 24px,1160px); }} .hero {{ padding-top:48px; }} h1 {{ font-size:clamp(2.35rem,12vw,3.5rem); }} .grid {{ grid-template-columns:1fr; gap:12px; padding-top:18px; }} .wide {{ grid-column:auto; }} .card {{ border-radius:18px; padding:22px 20px; }} .visual-flow {{ display:grid; overflow:visible; }} .visual-node {{ min-height:96px; }} .visual-node:not(:last-child)::after {{ content:"↓"; left:50%; top:calc(100% + 5px); transform:translateX(-50%); }} .visual-flow[data-visual-type="paper-outline"],.visual-flow[data-visual-type="benchmark-process"] {{ grid-template-columns:1fr; }} .visual-flow[data-visual-type="paper-outline"] .visual-node:nth-child(2) {{ border-top:1px solid var(--line); }} .score-ladder,.change-grid {{ grid-template-columns:1fr; }} .score-ladder::before {{ top:8%; bottom:8%; left:29px; width:2px; height:auto; }} .score-level {{ grid-template-columns:60px 1fr; justify-items:start; align-items:center; text-align:left; }} .lane-heading {{ align-items:flex-start; flex-direction:column; gap:3px; }} .encoder-flow,.decoder-flow {{ grid-template-columns:1fr; }} .architecture-node {{ min-height:78px; }} .architecture-node:not(:last-child)::after {{ content:"↓"; left:50%; top:calc(100% + 4px); transform:translateX(-50%); }} .architecture-bridge {{ grid-template-columns:1fr; justify-items:center; gap:2px; }} }}
     @media (prefers-contrast:more) {{ :root {{ --line:rgba(60,60,67,.42); --line-strong:rgba(60,60,67,.72); }} .card,.term,.visual-node {{ border-width:2px; }} .muted,.meta,.source-label,.visual-number {{ color:var(--ink); }} }}
     @media (prefers-reduced-motion:reduce) {{ html {{ scroll-behavior:auto; }} *,*::before,*::after {{ scroll-behavior:auto!important; transition-duration:.01ms!important; animation-duration:.01ms!important; animation-iteration-count:1!important; }} }}
     @media print {{ :root {{ --ink:#000; --muted:#444; --line:#bbb; --shadow:none; }} .shell {{ width:100%; }} .hero {{ padding:20px 0; }} .card {{ break-inside:avoid; box-shadow:none; }} details {{ display:none; }} }}
@@ -592,7 +759,9 @@ def render_html(
     {problem_card}
     {core_idea_card}
     {visual_card}
-    {paper_map}
+    {scoring_card}
+    {change_layers_card}
+    {figures_card}
     {body_cards}
     {glossary_card}
     {abstract_card}

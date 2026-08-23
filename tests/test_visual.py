@@ -60,7 +60,7 @@ class VisualSpecTests(unittest.TestCase):
 
         visual = build_visual_spec(paper)
 
-        self.assertEqual(visual.schema_version, "0.2")
+        self.assertEqual(visual.schema_version, "0.3")
         self.assertEqual(visual.visual_type, "encoder-decoder")
         self.assertEqual(visual.confidence, "high")
         self.assertEqual(len(visual.nodes), 8)
@@ -173,7 +173,7 @@ class VisualSpecTests(unittest.TestCase):
 
     def test_rejects_edges_to_unknown_nodes(self) -> None:
         spec = VisualSpec(
-            schema_version="0.2",
+            schema_version="0.3",
             visual_type="process",
             title="Broken",
             description="Broken graph",

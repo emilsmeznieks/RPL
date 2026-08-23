@@ -66,9 +66,17 @@ class OutputQualityTests(unittest.TestCase):
 
         self.assertEqual(len(refined.evidence), 2)
         self.assertTrue(all("BLEU" in item.text for item in refined.evidence))
-        self.assertEqual(
+        self.assertIn(
+            "Removed 3 low-signal result candidates from the reader output.",
             quality.warnings,
-            ["Removed 3 low-signal result candidates from the reader output."],
+        )
+        self.assertIn(
+            "Used a low-confidence paper-outline visual fallback.",
+            quality.warnings,
+        )
+        self.assertIn(
+            "No explicit limitations were identified in the paper text.",
+            quality.warnings,
         )
 
     def test_html_omits_empty_sections_and_expands_the_remaining_card(self) -> None:

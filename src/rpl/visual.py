@@ -2,7 +2,15 @@ from __future__ import annotations
 
 import re
 
-from .models import Paper, Section, VisualEdge, VisualNode, VisualSpec
+from .models import (
+    Paper,
+    ScoringLevel,
+    ScoringSpec,
+    Section,
+    VisualEdge,
+    VisualNode,
+    VisualSpec,
+)
 
 
 METHOD_SECTION_SIGNALS = (
@@ -53,9 +61,11 @@ class VisualSpecError(ValueError):
 def validate_visual_spec(spec: VisualSpec) -> None:
     """Fail fast if a renderer could not safely interpret the graph."""
 
-    if spec.schema_version != "0.2":
+    if spec.schema_version != "0.3":
         raise VisualSpecError(f"Unsupported visual schema: {spec.schema_version}")
     if spec.visual_type not in {
+        "benchmark-process",
+        "change-layers",
         "encoder-decoder",
         "process",
         "layered-architecture",
@@ -91,6 +101,12 @@ def _method_sections(paper: Paper) -> list[Section]:
     return matching or paper.sections
 
 
+def _figure_captions(section: Section) -> list[tuple[str, str | None]]:
+    if section.figure_records:
+        return [(record.caption, record.anchor or section.anchor) for record in section.figure_records]
+    return [(caption, section.anchor) for caption in section.figures]
+
+
 def _sequence_items(fragment: str) -> list[str]:
     fragment = TRAILING_STAGE.sub("", fragment).strip()
     items = [item.strip(" -–—()") for item in SEQUENCE_SEPARATOR.split(fragment)]
@@ -122,7 +138,7 @@ def _architecture_items(caption: str) -> list[str]:
 
 def _architecture_spec(paper: Paper) -> VisualSpec | None:
     for section in _method_sections(paper):
-        for caption in section.figures:
+        for caption, caption_anchor in _figure_captions(section):
             items = _architecture_items(caption)
             if not items:
                 continue
@@ -133,7 +149,7 @@ def _architecture_spec(paper: Paper) -> VisualSpec | None:
                     kind="layer",
                     source_section=section.title,
                     source_text=caption,
-                    source_anchor=section.anchor,
+                    source_anchor=caption_anchor,
                 )
                 for index, item in enumerate(items, start=1)
             ]
@@ -146,7 +162,7 @@ def _architecture_spec(paper: Paper) -> VisualSpec | None:
                 for index in range(len(nodes) - 1)
             ]
             return VisualSpec(
-                schema_version="0.2",
+                schema_version="0.3",
                 visual_type="layered-architecture",
                 title="System architecture",
                 description="Architecture layers named in the paper.",
@@ -155,6 +171,241 @@ def _architecture_spec(paper: Paper) -> VisualSpec | None:
                 edges=edges,
             )
     return None
+
+
+def _paragraph_with_signals(
+    paper: Paper, signals: tuple[str, ...], *, title_signal: str | None = None
+) -> tuple[Section, str, str | None] | None:
+    for section in paper.sections:
+        if title_signal and title_signal not in section.title.lower():
+            continue
+        for index, paragraph in enumerate(section.paragraphs):
+            lowered = paragraph.lower()
+            if all(signal in lowered for signal in signals):
+                anchor = (
+                    section.paragraph_anchors[index]
+                    if index < len(section.paragraph_anchors)
+                    else section.anchor
+                )
+                return section, paragraph, anchor
+    return None
+
+
+def _benchmark_process_spec(paper: Paper) -> VisualSpec | None:
+    caption_match: tuple[Section, str, str | None] | None = None
+    for section in paper.sections:
+        for caption, anchor in _figure_captions(section):
+            lowered = caption.lower()
+            required = (
+                "lifecycle",
+                "repository",
+                "four hours",
+                "source-code patch",
+                "fresh container",
+                "twelve hours",
+                "evaluator",
+            )
+            if all(signal in lowered for signal in required):
+                caption_match = (section, caption, anchor)
+                break
+        if caption_match:
+            break
+    if not caption_match:
+        return None
+
+    exploration = _paragraph_with_signals(
+        paper, ("four hours", "one b300", "only the source"), title_signal="protocol"
+    )
+    verification = _paragraph_with_signals(
+        paper, ("initialization", "twelve hours", "scored"), title_signal="protocol"
+    )
+    evaluator = _paragraph_with_signals(
+        paper, ("final metric", "evaluator frozen", "agent"), title_signal="protocol"
+    )
+    scoring = _paragraph_with_signals(
+        paper, ("two branches", "0.1", "optimum"), title_signal="scor"
+    )
+    if not exploration or not verification or not evaluator or not scoring:
+        return None
+
+    caption_section, caption, caption_anchor = caption_match
+    exploration_section, exploration_text, exploration_anchor = exploration
+    verification_section, verification_text, verification_anchor = verification
+    evaluator_section, evaluator_text, evaluator_anchor = evaluator
+    scoring_section, scoring_text, scoring_anchor = scoring
+    nodes = [
+        VisualNode(
+            "frozen-inputs",
+            "Frozen repository, starting model, and proxy metric",
+            "input",
+            caption_section.title,
+            caption,
+            caption_anchor,
+        ),
+        VisualNode(
+            "exploration",
+            "Four-hour agent exploration on one B300",
+            "step",
+            exploration_section.title,
+            exploration_text,
+            exploration_anchor,
+        ),
+        VisualNode(
+            "patch",
+            "Source-code patch only",
+            "output",
+            exploration_section.title,
+            exploration_text,
+            exploration_anchor,
+        ),
+        VisualNode(
+            "clean-run",
+            "Fresh container and clean-start execution",
+            "step",
+            caption_section.title,
+            caption,
+            caption_anchor,
+        ),
+        VisualNode(
+            "verification",
+            "Up to twelve-hour verification or training",
+            "step",
+            verification_section.title,
+            verification_text,
+            verification_anchor,
+        ),
+        VisualNode(
+            "evaluator",
+            "Fixed evaluator hidden from the agent",
+            "step",
+            evaluator_section.title,
+            evaluator_text,
+            evaluator_anchor,
+        ),
+        VisualNode(
+            "score",
+            "Normalized final score",
+            "output",
+            scoring_section.title,
+            scoring_text,
+            scoring_anchor,
+        ),
+    ]
+    return VisualSpec(
+        schema_version="0.3",
+        visual_type="benchmark-process",
+        title="Benchmark lifecycle",
+        description="The sourced path from frozen task inputs to the final score.",
+        confidence="high",
+        nodes=nodes,
+        edges=[
+            VisualEdge(nodes[index].id, nodes[index + 1].id)
+            for index in range(len(nodes) - 1)
+        ],
+        extraction_method="deterministic-benchmark-process-v1",
+    )
+
+
+def build_scoring_spec(paper: Paper) -> ScoringSpec | None:
+    """Extract a piecewise three-reference scoring scale when the paper states it."""
+
+    for section in paper.sections:
+        if "scor" not in section.title.lower():
+            continue
+        source_match = _paragraph_with_signals(
+            paper,
+            ("uninformative", "baseline", "optimum", "progress coordinate"),
+            title_signal="scor",
+        )
+        branch_match = _paragraph_with_signals(
+            paper, ("two branches", "0.1", "optimum"), title_signal="scor"
+        )
+        equation_index = next(
+            (
+                index
+                for index, equation in enumerate(section.equations)
+                if r"\begin{cases}" in equation and "0.1" in equation and "0.9" in equation
+            ),
+            None,
+        )
+        if not source_match or not branch_match or equation_index is None:
+            continue
+        _, source_text, source_anchor = source_match
+        _, branch_text, branch_anchor = branch_match
+        equation_anchor = (
+            section.equation_anchors[equation_index]
+            if equation_index < len(section.equation_anchors)
+            else section.anchor
+        )
+        return ScoringSpec(
+            schema_version="0.1",
+            title="How the score is normalized",
+            levels=[
+                ScoringLevel("0", "Uninformative model"),
+                ScoringLevel("0.1", "Repository's original algorithm"),
+                ScoringLevel("1.0", "Task optimum"),
+            ],
+            explanation=(
+                "After applying the task's progress coordinate, results below and above "
+                "the baseline use separate linear branches."
+            ),
+            equation=section.equations[equation_index],
+            source_section=section.title,
+            source_text=f"{source_text} {branch_text}",
+            source_anchor=branch_anchor or source_anchor,
+            equation_anchor=equation_anchor,
+        )
+    return None
+
+
+def build_change_layer_spec(paper: Paper) -> VisualSpec | None:
+    """Extract the paper's explicit run-side versus learning-side change taxonomy."""
+
+    match = _paragraph_with_signals(
+        paper,
+        (
+            "four change how this run goes",
+            "four change how the model learns",
+            "training hyperparameters",
+            "loss it optimizes",
+            "update rule",
+            "data",
+        ),
+    )
+    if not match:
+        return None
+    section, source_text, source_anchor = match
+    labels = [
+        ("Run duration and saving", "execution"),
+        ("Training hyperparameters", "execution"),
+        ("Checkpoint selection", "execution"),
+        ("Trainable capacity", "execution"),
+        ("Loss or objective", "learning"),
+        ("Supervision signal", "learning"),
+        ("Update rule", "learning"),
+        ("Training data", "learning"),
+    ]
+    return VisualSpec(
+        schema_version="0.3",
+        visual_type="change-layers",
+        title="What the submissions changed",
+        description="The paper's distinction between changing a run and changing learning.",
+        confidence="high",
+        nodes=[
+            VisualNode(
+                id=f"change-{index}",
+                label=label,
+                kind="category",
+                source_section=section.title,
+                source_text=source_text,
+                source_anchor=source_anchor,
+                group=group,
+            )
+            for index, (label, group) in enumerate(labels, start=1)
+        ],
+        edges=[],
+        extraction_method="deterministic-change-layer-v1",
+    )
 
 
 def _matching_paragraph(
@@ -274,7 +525,7 @@ def _encoder_decoder_spec(paper: Paper) -> VisualSpec | None:
         VisualEdge("decoder-feed-forward", "output"),
     ]
     return VisualSpec(
-        schema_version="0.2",
+        schema_version="0.3",
         visual_type="encoder-decoder",
         title="Encoder–decoder architecture",
         description="The sourced information flow through the paper's model.",
@@ -312,7 +563,7 @@ def _process_spec(paper: Paper) -> VisualSpec | None:
                     for index in range(len(nodes) - 1)
                 ]
                 return VisualSpec(
-                    schema_version="0.2",
+                    schema_version="0.3",
                     visual_type="process",
                     title="How the proposed system works",
                     description="Steps named in the paper.",
@@ -343,7 +594,7 @@ def _outline_spec(paper: Paper) -> VisualSpec:
         for index in range(len(nodes) - 1)
     ]
     return VisualSpec(
-        schema_version="0.2",
+        schema_version="0.3",
         visual_type="paper-outline",
         title="Paper structure",
         description="Main sections in reading order.",
@@ -357,7 +608,8 @@ def build_visual_spec(paper: Paper) -> VisualSpec:
     """Extract a conservative visual graph without generating new claims."""
 
     spec = (
-        _encoder_decoder_spec(paper)
+        _benchmark_process_spec(paper)
+        or _encoder_decoder_spec(paper)
         or _architecture_spec(paper)
         or _process_spec(paper)
         or _outline_spec(paper)

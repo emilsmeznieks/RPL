@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta name="citation_title" content="AI4AI-Bench regression fixture">
+  <meta name="citation_author" content="A. Researcher">
+  <meta name="citation_arxiv_id" content="2608.20318">
+</head>
+<body>
+  <div class="ltx_abstract">
+    <p>No benchmark isolates whether an agent can design training algorithms. We present AI4AI-Bench, ten frozen repositories for evaluating algorithmic design.</p>
+  </div>
+
+  <figure id="S0.F1" class="ltx_figure">
+    <img src="" class="ltx_graphics ltx_missing ltx_missing_image" alt="Refer to caption">
+    <figcaption class="ltx_caption">
+      <span class="ltx_tag ltx_tag_figure">Figure 1: </span>
+      <span class="ltx_text"><strong>AI4AI-Bench at a glance.</strong></span>
+      <em>Top:</em> the lifecycle every task runs through. The repository, starting model, and cheap proxy metric are frozen; the agent has four hours on one B300 to explore. What it leaves behind is a source-code patch and nothing else. The patch is applied in a fresh container and run from initialization for up to twelve hours. An evaluator fixed before the first run, with no access to the agent workspace, scores the result.
+    </figcaption>
+  </figure>
+
+  <section id="S1">
+    <h2>1 Introduction</h2>
+    <p id="S1.p1">Existing suites cannot distinguish changes to run execution from changes to how a model learns, which prevents direct measurement of algorithmic design.</p>
+  </section>
+
+  <section id="S2">
+    <h2>2 AI4AI-Bench</h2>
+    <section id="S2.SS3">
+      <h3>2.3 Protocol</h3>
+      <p id="S2.SS3.p1">Exploration is the same everywhere. For four hours the agent works inside the repository on one B300 and consults the fast proxy metric. When time is up, nothing else crosses forward: only the source.</p>
+      <p id="S2.SS3.p2">The submitted source is executed from initialization until it terminates or twelve hours elapse, and the resulting checkpoints are scored.</p>
+      <p id="S2.SS3.p3">The final metric is computed afterwards by an evaluator frozen before the first run, so the agent cannot access the metric that decides its result.</p>
+    </section>
+    <section id="S2.SS5">
+      <h3>2.5 Scoring</h3>
+      <p id="S2.SS5.p1">Each task uses a progress coordinate \varphi with three reference points: the uninformative model x_{\perp}, the baseline, and the optimum.</p>
+      <table id="S2.E1" class="ltx_equation ltx_eqn_table">
+        <tbody><tr><td><math id="S2.E1.m1" alttext="\sigma(x)=\begin{cases}0.1\frac{\varphi(x)-\phi_{\perp}}{\phi_b-\phi_{\perp}},&amp;\varphi(x)\leq\phi_b,\\0.1+0.9\frac{\varphi(x)-\phi_b}{\phi^{\ast}-\phi_b},&amp;\varphi(x)&gt;\phi_b\end{cases}"></math></td></tr></tbody>
+      </table>
+      <p id="S2.SS5.p2">The two branches meet at 0.1: matching the repository baseline is the pivot, what lies below it measures the distance from an uninformative model, and what lies above it measures progress to the optimum.</p>
+    </section>
+  </section>
+
+  <section id="S3">
+    <h2>3 Experiments</h2>
+    <figure id="S3.T2" class="ltx_table">
+      <figcaption><span>Table 2:</span> Every configuration on every task.</figcaption>
+      <div class="ltx_inline-block">
+        <p id="S3.T2.1"><span class="ltx_tabular"><span class="ltx_tbody">System Harness Effort OpenR1 \uparrow RAGEN \uparrow OPD \uparrow BTRM \uparrow Cost Baseline Claude Opus low 0.138 1.00 0.421 71.6 181 Claude Opus medium 0.121 1.00 0.432 77.1 166 Claude Sonnet high 0.113 0.895 0.427 74.5 96 GPT Sol max 0.126 1.00 0.429 73.9 626 Optimum x^{\ast} 1 1 1 100 Uninformative x_{\perp} 0 0 0 50 Coordinate \varphi x x x x \infty</span></span></p>
+      </div>
+    </figure>
+    <section id="S3.SS2">
+      <h3>3.2 Results</h3>
+      <p id="S3.SS2.p1">The mean score over the 290 cells is 0.166, the strongest system averages 0.250, and the single best configuration averages 0.288.</p>
+      <figure id="S3.F2" class="ltx_figure">
+        <img src="" class="ltx_missing_image" alt="Refer to caption">
+        <figcaption><span>Figure 2:</span> Mean score by system and reasoning effort. Every system sits inside the lowest fifth of the scale.</figcaption>
+      </figure>
+      <figure id="S3.F3" class="ltx_figure">
+        <img src="" class="ltx_missing_image" alt="Refer to caption">
+        <figcaption><span>Figure 3:</span> Mapped score against exploration spend, one panel per task. Spend does not explain the result.</figcaption>
+      </figure>
+    </section>
+  </section>
+
+  <section id="S4">
+    <h2>4 Analysis</h2>
+    <section id="S4.SS1">
+      <h3>4.1 Execution-level and learning-level changes</h3>
+      <p id="S4.SS1.p0">Four change how this run goes: run duration and saving, the training hyperparameters, checkpoint selection, and trainable capacity. Four change how the model learns: the loss it optimizes, the supervision signal, the update rule, and the data it trains on.</p>
+      <p id="S4.SS1.p1">Submissions that touch the learning procedure average 0.226 against 0.126 for those that stay on the run side, a gap of 0.100.</p>
+    </section>
+    <section id="S4.SS2">
+      <h3>4.2 Reasoning effort</h3>
+      <p id="S4.SS2.p1">The share of submissions that touch the learning algorithm rises from 8\% to 64\%.</p>
+      <p id="S4.SS2.p2">The mean score rises from 0.094 at the lowest level to 0.196 at the highest.</p>
+    </section>
+  </section>
+</body>
+</html>

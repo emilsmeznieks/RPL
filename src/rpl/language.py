@@ -21,10 +21,19 @@ LATEX_SYMBOLS = {
     r"\Delta": "Δ",
     r"\alpha": "α",
     r"\beta": "β",
+    r"\downarrow": "↓",
+    r"\infty": "∞",
     r"\lambda": "λ",
     r"\mu": "μ",
     r"\pm": "±",
+    r"\perp": "⊥",
+    r"\phi": "φ",
+    r"\prime": "′",
+    r"\sigma": "σ",
     r"\times": "×",
+    r"\uparrow": "↑",
+    r"\varphi": "φ",
+    r"\ast": "*",
 }
 
 
@@ -37,6 +46,10 @@ def reading_text(text: str) -> str:
         value = value.replace(command, symbol)
     value = re.sub(r"\\mathrm\{([^{}]+)\}", r"\1", value)
     value = re.sub(r"([A-Za-z])_\{([^{}]+)\}", r"\1 (\2)", value)
+    value = re.sub(r"([A-Za-z0-9)])\^\{\\?ast\}", r"\1*", value)
+    value = value.replace(r"\in", "∈").replace(r"\log", "log")
+    value = value.replace(r"\{", "{").replace(r"\}", "}")
+    value = re.sub(r"\\[,;:!]", " ", value)
     return re.sub(r"\s+", " ", value).strip()
 
 

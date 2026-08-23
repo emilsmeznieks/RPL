@@ -146,7 +146,7 @@ class DigestTests(unittest.TestCase):
         self.assertIn("## The core idea", markdown)
         self.assertIn("```mermaid", markdown)
         self.assertFalse(payload["provenance"]["generated_claims"])
-        self.assertEqual(payload["schema_version"], "0.9")
+        self.assertEqual(payload["schema_version"], "0.10")
         self.assertEqual(payload["output_quality"]["status"], "ready")
         self.assertEqual(payload["comparison"]["schema_version"], "0.2")
         self.assertEqual(payload["comparison"]["status"], "not-generated")
