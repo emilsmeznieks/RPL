@@ -5,6 +5,16 @@ from typing import Any
 
 
 @dataclass(slots=True)
+class FigureArtifact:
+    """A paper figure caption and the availability of its source image."""
+
+    caption: str
+    anchor: str | None = None
+    image_url: str | None = None
+    image_status: str = "not-provided"
+
+
+@dataclass(slots=True)
 class Section:
     """A logical section extracted from a research paper."""
 
@@ -15,6 +25,8 @@ class Section:
     equations: list[str] = field(default_factory=list)
     figures: list[str] = field(default_factory=list)
     paragraph_anchors: list[str | None] = field(default_factory=list)
+    equation_anchors: list[str | None] = field(default_factory=list)
+    figure_records: list[FigureArtifact] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -32,6 +44,7 @@ class Paper:
     abstract: str
     keywords: list[str] = field(default_factory=list)
     sections: list[Section] = field(default_factory=list)
+    extraction_warnings: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -56,7 +69,7 @@ class Digest:
     evidence: list[SourcedStatement]
     limitations: list[SourcedStatement]
     takeaways: list[SourcedStatement]
-    extraction_method: str = "deterministic-extractive-v2"
+    extraction_method: str = "deterministic-extractive-v3"
     paper_type: str = "unknown"
     paper_type_confidence: str = "low"
 
@@ -98,7 +111,34 @@ class VisualSpec:
     confidence: str
     nodes: list[VisualNode]
     edges: list[VisualEdge]
-    extraction_method: str = "deterministic-visual-v2"
+    extraction_method: str = "deterministic-visual-v3"
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(slots=True)
+class ScoringLevel:
+    """One sourced reference point in a paper's scoring scale."""
+
+    value: str
+    label: str
+
+
+@dataclass(slots=True)
+class ScoringSpec:
+    """A sourced explanation of a paper's piecewise scoring mechanism."""
+
+    schema_version: str
+    title: str
+    levels: list[ScoringLevel]
+    explanation: str
+    equation: str
+    source_section: str
+    source_text: str
+    source_anchor: str | None = None
+    equation_anchor: str | None = None
+    extraction_method: str = "deterministic-scoring-visual-v1"
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

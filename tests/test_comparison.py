@@ -116,7 +116,7 @@ class ComparisonModelTests(unittest.TestCase):
 
         payload = knowledge_payload(self.focal, digest, self.spec)
 
-        self.assertEqual(payload["schema_version"], "0.9")
+        self.assertEqual(payload["schema_version"], "0.10")
         self.assertEqual(payload["comparison"]["status"], "complete")
         self.assertEqual(
             payload["comparison"]["related_papers"][0]["paper_id"],

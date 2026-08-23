@@ -24,7 +24,7 @@ class AnalysisServiceTests(unittest.TestCase):
         payload = json.loads(self.analysis.json)
         self.assertEqual(payload["comparison"]["status"], "not-generated")
         self.assertIn(
-            "&quot;schema_version&quot;: &quot;0.9&quot;", self.analysis.html
+            "&quot;schema_version&quot;: &quot;0.10&quot;", self.analysis.html
         )
         self.assertEqual(self.analysis.output_quality.status, "ready")
 

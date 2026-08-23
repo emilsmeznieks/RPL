@@ -4,7 +4,7 @@ import re
 from html import unescape
 from html.parser import HTMLParser
 
-from .models import Paper, Section
+from .models import FigureArtifact, Paper, Section
 from .source import arxiv_id
 
 
@@ -62,6 +62,9 @@ class ArxivHTMLParser(HTMLParser):
         self._capture_in_abstract = False
         self._capture_kind = ""
         self._section_anchors: list[tuple[int, str]] = []
+        self._non_prose_depths: list[int] = []
+        self._figure_stack: list[dict[str, object]] = []
+        self._excluded_prose_count = 0
 
     @staticmethod
     def _attributes(attrs: list[tuple[str, str | None]]) -> dict[str, str]:
@@ -71,6 +74,40 @@ class ArxivHTMLParser(HTMLParser):
         if tag not in self.void_tags:
             self._depth += 1
         attributes = self._attributes(attrs)
+        classes = set(attributes.get("class", "").split())
+
+        is_equation_table = "ltx_equation" in classes or "ltx_eqn_table" in classes
+        is_table = (tag == "table" and not is_equation_table) or bool(
+            classes & {"ltx_table", "ltx_tabular", "ltx_tbody", "ltx_the_table"}
+        )
+        is_figure_panel = tag == "figure" or bool(
+            classes & {"ltx_figure", "ltx_figure_panel", "ltx_subfigure"}
+        )
+        if (is_table or is_figure_panel) and tag not in self.void_tags:
+            self._non_prose_depths.append(self._depth)
+
+        if tag == "figure":
+            self._figure_stack.append(
+                {
+                    "depth": self._depth,
+                    "anchor": attributes.get("id", "") or None,
+                    "kind": "table" if "ltx_table" in classes else "figure",
+                    "saw_image": False,
+                    "image_url": None,
+                    "image_missing": False,
+                }
+            )
+
+        if tag == "img" and self._figure_stack:
+            figure = self._figure_stack[-1]
+            source = attributes.get("src", "").strip()
+            figure["saw_image"] = True
+            figure["image_url"] = source or None
+            figure["image_missing"] = (
+                not source
+                or "ltx_missing" in classes
+                or "ltx_missing_image" in classes
+            )
 
         if tag == "section" and attributes.get("id"):
             self._section_anchors.append((self._depth, attributes["id"]))
@@ -84,14 +121,21 @@ class ArxivHTMLParser(HTMLParser):
             if name and content:
                 self.metadata.setdefault(name, []).append(content)
 
-        classes = set(attributes.get("class", "").split())
         if tag == "div" and "ltx_abstract" in classes and self._abstract_depth is None:
             self._abstract_depth = self._depth
 
         if tag == "math":
             equation = clean_text(attributes.get("alttext", ""))
-            if equation and self.sections and equation not in self.sections[-1].equations:
+            if (
+                equation
+                and self.sections
+                and not self._non_prose_depths
+                and equation not in self.sections[-1].equations
+            ):
                 self.sections[-1].equations.append(equation)
+                self.sections[-1].equation_anchors.append(
+                    attributes.get("id", "") or self.sections[-1].anchor
+                )
             if equation and self._capture_tag is not None:
                 self._capture_parts.append(equation)
             self._math_depth = self._depth
@@ -106,16 +150,21 @@ class ArxivHTMLParser(HTMLParser):
             (tag in self.capture_tags or special_kind)
             and self._capture_tag is None
             and self._ignored_depth is None
+            and not (tag == "p" and self._non_prose_depths)
         ):
             self._capture_tag = tag
             self._capture_depth = self._depth
             self._capture_parts = []
             self._capture_class = attributes.get("class", "")
             self._capture_id = attributes.get("id", "")
+            if tag == "figcaption" and not self._capture_id and self._figure_stack:
+                self._capture_id = str(self._figure_stack[-1].get("anchor") or "")
             if not self._capture_id and self._section_anchors:
                 self._capture_id = self._section_anchors[-1][1]
             self._capture_in_abstract = self._abstract_depth is not None
             self._capture_kind = special_kind
+        elif tag == "p" and self._capture_tag is None and self._non_prose_depths:
+            self._excluded_prose_count += 1
 
     def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         if tag == "meta":
@@ -147,6 +196,11 @@ class ArxivHTMLParser(HTMLParser):
             and self._section_anchors[-1][0] == self._depth
         ):
             self._section_anchors.pop()
+        if tag == "figure" and self._figure_stack:
+            if self._figure_stack[-1]["depth"] == self._depth:
+                self._figure_stack.pop()
+        if self._non_prose_depths and self._non_prose_depths[-1] == self._depth:
+            self._non_prose_depths.pop()
         if tag not in self.void_tags:
             self._depth = max(0, self._depth - 1)
 
@@ -198,8 +252,29 @@ class ArxivHTMLParser(HTMLParser):
                 self.sections[-1].paragraph_anchors.append(element_id or None)
             return
 
-        if tag == "figcaption" and self.sections:
+        if tag == "figcaption":
+            figure = self._figure_stack[-1] if self._figure_stack else {
+                "anchor": element_id or None,
+                "kind": "figure",
+                "saw_image": False,
+                "image_url": None,
+                "image_missing": False,
+            }
+            if figure["kind"] != "figure":
+                return
+            if not self.sections:
+                self.sections.append(Section("Front matter", 1, anchor="S0"))
+            image_status = "not-provided"
+            if figure["saw_image"]:
+                image_status = "unavailable" if figure["image_missing"] else "available"
+            record = FigureArtifact(
+                caption=text,
+                anchor=element_id or figure["anchor"] or None,
+                image_url=figure["image_url"] or None,
+                image_status=image_status,
+            )
             self.sections[-1].figures.append(text)
+            self.sections[-1].figure_records.append(record)
 
     def paper(self, source_url: str) -> Paper:
         def first(name: str, fallback: str = "") -> str:
@@ -220,6 +295,23 @@ class ArxivHTMLParser(HTMLParser):
             if author and author not in authors:
                 authors.append(author)
 
+        extraction_warnings: list[str] = []
+        if self._excluded_prose_count:
+            extraction_warnings.append(
+                f"Rejected {self._excluded_prose_count} table- or figure-contained "
+                "paragraph-like elements from prose extraction."
+            )
+        unavailable_images = sum(
+            record.image_status == "unavailable"
+            for section in self.sections
+            for record in section.figure_records
+        )
+        if unavailable_images:
+            extraction_warnings.append(
+                f"{unavailable_images} source figure image"
+                f"{'s were' if unavailable_images != 1 else ' was'} unavailable in the arXiv HTML."
+            )
+
         return Paper(
             paper_id=identifier,
             title=title,
@@ -229,6 +321,7 @@ class ArxivHTMLParser(HTMLParser):
             abstract=clean_text(self.abstract_parts),
             keywords=keywords,
             sections=self.sections,
+            extraction_warnings=extraction_warnings,
         )
 
 

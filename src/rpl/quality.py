@@ -20,6 +20,7 @@ RESULT_SECTIONS = (
 NON_RESULT_SECTIONS = ("background", "introduction", "related work")
 RESULT_SIGNALS = (
     "accuracy",
+    "average",
     "achieve",
     "attain",
     "better than",
@@ -28,9 +29,13 @@ RESULT_SIGNALS = (
     "establishing a new",
     "faster than",
     "improved by",
+    "mean score",
     "outperform",
     "reduced by",
     "reached",
+    "reaches",
+    "rises from",
+    "share of submissions",
     "score of",
     "state-of-the-art",
     "superior",
@@ -55,6 +60,21 @@ THEORETICAL_RESULT_SIGNALS = (
     "we show",
 )
 MEASUREMENT = re.compile(r"\b\d+(?:\.\d+)?(?:\s*%|\s*(?:bleu|x)\b)?", re.I)
+NUMBER_TOKEN = re.compile(r"(?<![A-Za-z])[-+]?\d+(?:\.\d+)?%?")
+TABLE_HEADERS = (
+    "accuracy",
+    "average",
+    "baseline",
+    "configuration",
+    "cost",
+    "effort",
+    "harness",
+    "metric",
+    "model",
+    "score",
+    "system",
+)
+TABLE_CONTROL_TOKENS = (r"\uparrow", r"\downarrow", r"\ast", r"\perp", r"\infty")
 
 
 def _section(
@@ -88,6 +108,32 @@ def _is_reader_result(text: str, section: str, paper_type: str) -> bool:
     return strong_result or abstract_result or (result_section and comparative and measured)
 
 
+def evidence_rejection_reason(text: str) -> str | None:
+    """Reject content whose shape is unsafe or unusable as reader evidence."""
+
+    stripped = text.strip()
+    if len(stripped) > 700 or len(stripped.split()) > 120:
+        return "excessively-long"
+
+    numbers = NUMBER_TOKEN.findall(stripped)
+    words = re.findall(r"[A-Za-z][A-Za-z0-9.-]*", stripped)
+    token_count = max(1, len(numbers) + len(words))
+    numeric_density = len(numbers) / token_count
+    header_count = sum(header in stripped.lower() for header in TABLE_HEADERS)
+    control_count = sum(token in stripped for token in TABLE_CONTROL_TOKENS)
+    sentence_marks = sum(stripped.count(mark) for mark in ".?!")
+
+    if len(numbers) >= 18 and numeric_density >= 0.18:
+        return "table-like"
+    if len(stripped) > 280 and len(numbers) >= 8 and header_count >= 3:
+        return "table-like"
+    if len(stripped) > 400 and len(numbers) >= 10 and sentence_marks <= 1:
+        return "table-like"
+    if len(numbers) >= 8 and control_count >= 2:
+        return "table-like"
+    return None
+
+
 def apply_output_quality_rules(
     paper: Paper,
     digest: Digest,
@@ -96,12 +142,20 @@ def apply_output_quality_rules(
 ) -> tuple[Digest, OutputQuality]:
     """Return reader-approved content and an audit trail of every section decision."""
 
-    evidence = [
-        item
-        for item in digest.evidence
-        if _is_reader_result(item.text, item.section, digest.paper_type)
-    ]
-    removed_evidence = len(digest.evidence) - len(evidence)
+    evidence = []
+    table_like_removed = 0
+    excessively_long_removed = 0
+    low_signal_removed = 0
+    for item in digest.evidence:
+        rejection = evidence_rejection_reason(item.text)
+        if rejection == "table-like":
+            table_like_removed += 1
+        elif rejection == "excessively-long":
+            excessively_long_removed += 1
+        elif _is_reader_result(item.text, item.section, digest.paper_type):
+            evidence.append(item)
+        else:
+            low_signal_removed += 1
     refined = replace(digest, evidence=evidence)
 
     sections = [
@@ -123,7 +177,11 @@ def apply_output_quality_rules(
             "visual",
             bool(visual.nodes),
             len(visual.nodes),
-            "A paper visual or compact section outline is available.",
+            (
+                "A sourced substantive paper visual is available."
+                if visual.visual_type != "paper-outline"
+                else "A low-confidence section-outline fallback is available."
+            ),
             "No safe visual structure was identified.",
         ),
         _section(
@@ -162,20 +220,37 @@ def apply_output_quality_rules(
             "No abstract is available.",
         ),
     ]
-    warnings = []
-    if removed_evidence:
+    warnings = list(paper.extraction_warnings)
+    if table_like_removed:
         warnings.append(
-            f"Removed {removed_evidence} low-signal result candidate"
-            f"{'s' if removed_evidence != 1 else ''} from the reader output."
+            f"Rejected {table_like_removed} table-like evidence candidate"
+            f"{'s' if table_like_removed != 1 else ''}."
         )
+    if excessively_long_removed:
+        warnings.append(
+            f"Rejected {excessively_long_removed} excessively long evidence candidate"
+            f"{'s' if excessively_long_removed != 1 else ''}."
+        )
+    if low_signal_removed:
+        warnings.append(
+            f"Removed {low_signal_removed} low-signal result candidate"
+            f"{'s' if low_signal_removed != 1 else ''} from the reader output."
+        )
+    substantive_visual = visual.visual_type != "paper-outline" and visual.confidence != "low"
+    if not substantive_visual:
+        warnings.append("Used a low-confidence paper-outline visual fallback.")
+    if not refined.limitations:
+        warnings.append("No explicit limitations were identified in the paper text.")
     required = {"problem", "core_idea", "evidence"}
     shown = {item.key for item in sections if item.status == "shown"}
-    status = "ready" if required <= shown else "partial"
+    ready = required <= shown and substantive_visual and bool(refined.limitations)
+    status = "ready" if ready else "partial"
     return refined, OutputQuality(
-        schema_version="0.1",
+        schema_version="0.2",
         status=status,
         sections=sections,
         warnings=warnings,
+        method="deterministic-output-quality-v2",
     )
 
 
