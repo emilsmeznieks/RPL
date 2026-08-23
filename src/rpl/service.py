@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from .comparison import empty_comparison_set
+from .discovery import DiscoveryError, discover_related_papers
 from .digest import build_digest
 from .language import build_glossary
 from .models import ComparisonSet, Digest, OutputQuality, Paper
@@ -55,6 +56,13 @@ def analyze_source(source: str, *, timeout: float = 30.0) -> AnalysisResult:
         build_glossary(paper),
     )
     comparison = empty_comparison_set(paper)
+    if source_url.startswith(("http://", "https://")):
+        try:
+            comparison = discover_related_papers(paper, digest, timeout=timeout)
+        except DiscoveryError:
+            comparison = replace(
+                comparison, discovery_method="arxiv-api-unavailable-v1"
+            )
     return AnalysisResult(
         paper=paper,
         digest=digest,

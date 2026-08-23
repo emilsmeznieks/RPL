@@ -6,8 +6,8 @@ from urllib.parse import urlparse
 from .models import ComparisonSet, Paper
 
 
-COMPARISON_SCHEMA_VERSION = "0.1"
-COMPARISON_STATUSES = {"not-generated", "partial", "complete"}
+COMPARISON_SCHEMA_VERSION = "0.2"
+COMPARISON_STATUSES = {"not-generated", "no-match", "partial", "complete"}
 RELATION_KINDS = {
     "same-topic",
     "shared-task",
@@ -56,15 +56,17 @@ def validate_comparison_set(spec: ComparisonSet) -> None:
     if not isinstance(spec.generated_claims, bool):
         raise ComparisonSpecError("generated_claims must be true or false.")
 
-    if spec.status == "not-generated":
+    if spec.status in {"not-generated", "no-match"}:
         if spec.generated_claims:
             raise ComparisonSpecError(
-                "A comparison that was not generated cannot contain generated claims."
+                "An empty comparison cannot contain generated claims."
             )
         if spec.related_papers or spec.relation_signals or spec.dimensions:
             raise ComparisonSpecError(
-                "A comparison that was not generated cannot contain results."
+                "An empty comparison cannot contain results."
             )
+        if spec.status == "no-match" and spec.discovery_method == "not-run":
+            raise ComparisonSpecError("A no-match comparison must record discovery.")
         return
 
     if not spec.related_papers:

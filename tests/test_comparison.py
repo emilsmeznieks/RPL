@@ -39,7 +39,7 @@ class ComparisonModelTests(unittest.TestCase):
             source_url="https://arxiv.org/html/2606.10000v2",
         )
         self.spec = ComparisonSet(
-            schema_version="0.1",
+            schema_version="0.2",
             focal_paper_id=self.focal.paper_id,
             status="complete",
             related_papers=[self.related],
@@ -101,7 +101,7 @@ class ComparisonModelTests(unittest.TestCase):
         validate_comparison_set(self.spec)
 
         payload = self.spec.to_dict()
-        self.assertEqual(payload["schema_version"], "0.1")
+        self.assertEqual(payload["schema_version"], "0.2")
         self.assertEqual(
             payload["relation_signals"][0]["evidence"][1]["source_anchor"],
             "S2.p4",
@@ -116,7 +116,7 @@ class ComparisonModelTests(unittest.TestCase):
 
         payload = knowledge_payload(self.focal, digest, self.spec)
 
-        self.assertEqual(payload["schema_version"], "0.8")
+        self.assertEqual(payload["schema_version"], "0.9")
         self.assertEqual(payload["comparison"]["status"], "complete")
         self.assertEqual(
             payload["comparison"]["related_papers"][0]["paper_id"],

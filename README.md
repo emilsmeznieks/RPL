@@ -6,9 +6,9 @@ Give RPL an arXiv URL or ID. It creates:
 
 - `paper.html` — a readable, responsive page with key ideas, evidence, limitations, and a sourced visual or paper outline
 - `paper.md` — a learning card in Markdown
-- `paper.json` — structured content with source information for AI agents and other tools
+- `paper.json` — structured content, source information, and related-paper comparisons for AI agents and other tools
 
-RPL runs on your computer. It does not require an account, API key, or AI model. Processing an arXiv URL requires internet access; saved arXiv HTML files can be processed offline.
+RPL runs on your computer. It does not require an account, API key, or AI model. Processing an arXiv URL requires internet access; saved arXiv HTML files can be processed offline without related-paper discovery.
 
 ## Quick start
 
@@ -162,20 +162,20 @@ The top-level JSON fields are:
 - `visual` — sourced nodes and connections for the HTML visual
 - `glossary` — acronym expansions stated by the paper
 - `output_quality` — the sections shown or omitted, the reason for each decision, and any filtered result candidates
-- `comparison` — related-paper data or an explicit `not-generated` status
+- `comparison` — related-paper data or an explicit discovery status
 - `provenance` — source and extraction information
 
-The comparison model separates:
+For online arXiv inputs, RPL searches arXiv metadata and keeps up to three candidates that have supported topic overlap. The comparison model separates:
 
 - `related_papers` — paper identity and source metadata
 - `relation_signals` — why papers are related, with exact evidence from each paper
 - `dimensions` — sourced side-by-side values such as problem, method, dataset, or result
 
-Supported relationship types are `same-topic`, `shared-task`, `shared-method`, `shared-equation`, `shared-dataset`, `cites`, and `cited-by`.
+The first automatic discovery method emits `same-topic` relationships. The data model also supports `shared-task`, `shared-method`, `shared-equation`, `shared-dataset`, `cites`, and `cited-by` for later discovery methods.
 
-Similarity relationships require evidence from both papers. Until automatic discovery runs, the status remains `not-generated`; RPL does not return an empty list as if it had searched and found nothing.
+Similarity relationships require exact title or abstract evidence from both papers. A completed search with no safe result has the status `no-match`. Offline files remain `not-generated` because discovery did not run.
 
-Compatible AI clients can use this data through RPL's local MCP server. Automatic related-paper discovery is not implemented yet.
+Compatible AI clients receive this data through RPL's local MCP server.
 
 ## How it works
 
@@ -184,6 +184,8 @@ flowchart LR
   A["arXiv paper"] --> B["Extract paper content"]
   B --> C["Select key statements with sources"]
   C --> D["Apply output quality rules"]
+  B --> H["Find related papers from arXiv metadata"]
+  H --> G
   D --> E["Adaptive HTML for reading"]
   D --> F["Markdown for notes"]
   D --> G["JSON for agents"]
@@ -199,11 +201,11 @@ RPL currently copies relevant statements from the paper instead of generating a 
 - RPL can miss important content or select weak, repeated, or conflicting statements. It does not reconcile contradictions in a paper.
 - Equations and figure captions are preserved in `paper.json`; the short HTML and Markdown views do not show all of them.
 - Visual extraction supports explicit encoder–decoder descriptions, clear process sequences, and specific architecture-caption patterns. Other papers receive a simple section outline.
-- Related-paper discovery and comparison are not implemented yet.
+- Related-paper discovery currently uses title and abstract overlap from arXiv metadata. It does not yet inspect citation graphs, shared equations, or full text from candidate papers.
 
 ## Current status
 
-RPL 0.8 supports:
+RPL 0.9 supports:
 
 - Modern and legacy arXiv URLs and IDs
 - Saved arXiv HTML files
@@ -217,7 +219,7 @@ RPL 0.8 supports:
 - Direct links to matching arXiv paragraphs or sections
 - One selected statement per exact source paragraph in each output section
 - Paper-type-aware result extraction for empirical and theoretical papers
-- An evidence-backed JSON model for future related-paper comparisons
+- An evidence-backed JSON model for related-paper comparisons
 - A local MCP server for compatible AI clients
 - One reusable analysis service shared by the CLI and MCP server
 - Cleaner reader text without citation-number clutter
@@ -226,19 +228,23 @@ RPL 0.8 supports:
 - A structured output-quality report in JSON and MCP responses
 - High-precision filtering of background and setup statements from reported results
 - Ranked selection of explicit constraints and research gaps for the problem section
+- Automatic discovery of up to three related papers from arXiv metadata
+- Exact title or abstract evidence for every automatic topic relationship
+- A sourced abstract-focus comparison for the focal and related papers
 
 Not yet included:
 
 - AI-written explanations
-- Automatic discovery and comparison of related papers
+- Related-paper maps in the HTML reader
 - A saved research library
 
 ## Roadmap
 
-1. Find related papers and populate evidence-backed comparisons.
-2. Add related-paper maps to the HTML and MCP output.
-3. Build local saved research libraries.
-4. Add optional cited AI explanations.
+1. Add related-paper maps to the HTML and MCP output.
+2. Build local saved research libraries.
+3. Add optional cited AI explanations.
+
+Thank you to arXiv for use of its open access interoperability.
 
 ## Development
 
